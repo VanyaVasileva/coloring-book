@@ -11,69 +11,37 @@ h1{font:500 20px Georgia,serif;margin:0}
 button{border:1px solid #cec7bb;background:#fff;border-radius:9px;padding:9px 11px;font-size:13px;color:var(--ink)}
 button.active{background:var(--ink);color:#fff}
 main{display:grid;grid-template-columns:205px minmax(0,1fr) 245px;min-height:calc(100vh - 58px)}
-aside{padding:14px;background:#ffffff70} .left{border-right:1px solid var(--line)} .right{border-left:1px solid var(--line)}
-.stage{padding:14px;display:flex;justify-content:center}
-.shell{position:relative;width:min(100%,760px);aspect-ratio:1/1;background:#fff;overflow:hidden;box-shadow:0 4px 20px #0001}
-#guide,#paint{position:absolute;inset:0;width:100%;height:100%;display:block} #guide{z-index:1;pointer-events:none} #paint{z-index:2;touch-action:none}
+aside{padding:14px;background:#ffffff70}.left{border-right:1px solid var(--line)}.right{border-left:1px solid var(--line)}
+.stage{padding:14px;display:flex;justify-content:center;align-items:flex-start}
+.shell{position:relative;width:min(100%,760px);background:#fff;overflow:hidden;box-shadow:0 4px 20px #0001}
+#guide{position:relative;width:100%;height:auto;display:block;z-index:1;pointer-events:none}
+#paint{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:2;touch-action:none}
 .label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#69635b;margin:14px 0 7px}
-.palette{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-.swatch{height:48px;border:1px solid #cfc7ba;border-radius:9px;font-weight:700;position:relative}
-.swatch.selected{outline:3px solid #282621;outline-offset:2px} .swatch small{position:absolute;bottom:3px;right:5px;font-size:9px;font-weight:500}
-input[type=range]{width:100%} .info{font-size:12px;line-height:1.45;color:#756f65} .pill{font-size:12px;background:white;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px}
-#reference{width:100%;display:none;border-radius:10px;border:1px solid var(--line)}
-.hiddenAsset{display:none}
+.palette{display:grid;grid-template-columns:1fr 1fr;gap:7px}.swatch{height:48px;border:1px solid #cfc7ba;border-radius:9px;font-weight:700;position:relative}.swatch.selected{outline:3px solid #282621;outline-offset:2px}.swatch small{position:absolute;bottom:3px;right:5px;font-size:9px;font-weight:500}
+input[type=range]{width:100%}.info{font-size:12px;line-height:1.45;color:#756f65}.pill{font-size:12px;background:white;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px}#reference{width:100%;height:auto;display:none;border-radius:10px;border:1px solid var(--line)}.hiddenAsset{display:none}
 @media(max-width:900px){main{grid-template-columns:1fr}.stage{order:1;padding:8px}.left{order:2;border:0;border-top:1px solid var(--line)}.right{order:3;border:0;border-top:1px solid var(--line)}}
 </style></head><body>
-<header><h1>Color Sketchbook — Fish · Exact Mask Engine</h1><div><button id="refBtn">Reference</button> <button id="exportBtn">Export PNG</button></div></header>
-<main>
-<aside class="left">
-<div class="label">Tool</div><button id="penBtn" class="active" style="width:100%">Traditional Acrylic</button>
-<div class="label">Brush size</div><input id="size" type="range" min="8" max="100" value="36">
-<div class="label">Opacity</div><input id="opacity" type="range" min="40" max="100" value="96">
-<div class="label">Actions</div><div style="display:flex;gap:7px"><button id="undo" style="flex:1">Undo</button><button id="redo" style="flex:1">Redo</button></div>
-<button id="clear" style="width:100%;margin-top:7px">Clear Colors</button>
-<div class="label">Exact mask test</div>
-<div class="info">These masks come directly from your Procreate color layers. The visible numbered guide does not control the boundary. The hidden mask does.</div>
-<div id="status" class="pill">Choose a numbered color and paint over its matching area.</div>
-</aside>
-<section class="stage"><div class="shell"><img id="guide" src="fish-numbered-guide.png"><canvas id="paint" width="2000" height="2000"></canvas></div></section>
-<aside class="right"><div class="label">Palette</div><div id="palette" class="palette"></div><div class="label">Reference</div><img id="reference" src="fish-reference.png"><div class="info" style="margin-top:8px">Paint should cover the guide line and number while staying inside the exact hidden layer.</div></aside>
-</main>
+<header><h1>Color Sketchbook — Fish · Native Mask Engine</h1><div><button id="refBtn">Reference</button> <button id="exportBtn">Export PNG</button></div></header>
+<main><aside class="left"><div class="label">Tool</div><button id="penBtn" class="active" style="width:100%">Traditional Acrylic</button><div class="label">Brush size</div><input id="size" type="range" min="8" max="100" value="36"><div class="label">Opacity</div><input id="opacity" type="range" min="40" max="100" value="96"><div class="label">Actions</div><div style="display:flex;gap:7px"><button id="undo" style="flex:1">Undo</button><button id="redo" style="flex:1">Redo</button></div><button id="clear" style="width:100%;margin-top:7px">Clear Colors</button><div class="label">Native mask test</div><div class="info">Nothing is forced into a 2000 × 2000 square. The guide defines the exact native canvas size and every mask is mapped into that same coordinate system.</div><div id="status" class="pill">Loading artwork…</div></aside>
+<section class="stage"><div class="shell" id="shell"><img id="guide" src="fish-numbered-guide.png"><canvas id="paint"></canvas></div></section>
+<aside class="right"><div class="label">Palette</div><div id="palette" class="palette"></div><div class="label">Reference</div><img id="reference" src="fish-reference.png"><div class="info" style="margin-top:8px">The browser now preserves the artwork's native proportions instead of stretching it to a square.</div></aside></main>
 <img class="hiddenAsset" id="mask1" src="mask-1.png"><img class="hiddenAsset" id="mask2" src="mask-2.png"><img class="hiddenAsset" id="mask3" src="mask-3.png"><img class="hiddenAsset" id="mask4" src="mask-4.png"><img class="hiddenAsset" id="mask5" src="mask-5.png"><img class="hiddenAsset" id="mask6" src="mask-6.png">
 <script>
-const W=2000,H=2000,c=document.getElementById('paint'),ctx=c.getContext('2d');
-const tmp=document.createElement('canvas');tmp.width=W;tmp.height=H;const t=tmp.getContext('2d');
-const maskCanvas=document.createElement('canvas');maskCanvas.width=W;maskCanvas.height=H;const mctx=maskCanvas.getContext('2d');
-const palette=[{"n": 1, "name": "Sage Background", "hex": "#94A684"}, {"n": 2, "name": "Coral", "hex": "#D17563"}, {"n": 3, "name": "Soft Pink", "hex": "#F1D5D3"}, {"n": 4, "name": "Light Details", "hex": "#F1D5D3"}, {"n": 5, "name": "Apricot", "hex": "#E5B887"}, {"n": 6, "name": "Charcoal", "hex": "#111111"}];
-let selected=2,drawing=false,last=null,history=[],future=[];
-function pos(e){const r=c.getBoundingClientRect();return {x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
+const c=document.getElementById('paint'),ctx=c.getContext('2d'),guide=document.getElementById('guide'),shell=document.getElementById('shell');
+const tmp=document.createElement('canvas'),t=tmp.getContext('2d');const maskCanvas=document.createElement('canvas'),mctx=maskCanvas.getContext('2d');
+const palette=[{n:1,name:'Sage Background',hex:'#94A684'},{n:2,name:'Coral',hex:'#D17563'},{n:3,name:'Soft Pink',hex:'#F1D5D3'},{n:4,name:'Light Details',hex:'#F1D5D3'},{n:5,name:'Apricot',hex:'#E5B887'},{n:6,name:'Charcoal',hex:'#111111'}];
+let W=1,H=1,selected=2,drawing=false,last=null,history=[],future=[];
+function init(){W=guide.naturalWidth;H=guide.naturalHeight;if(!W||!H)return;c.width=tmp.width=maskCanvas.width=W;c.height=tmp.height=maskCanvas.height=H;shell.style.aspectRatio=`${W}/${H}`;status.textContent=`Ready — native artwork ${W} × ${H}.`;}
+if(guide.complete)init();else guide.addEventListener('load',init,{once:true});
+function pos(e){const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
 function save(){history.push(ctx.getImageData(0,0,W,H));if(history.length>20)history.shift();future=[]}
 function getMask(n){return document.getElementById('mask'+n)}
-function maskHit(n,x,y){
- mctx.clearRect(0,0,W,H);mctx.drawImage(getMask(n),0,0,W,H);
- return mctx.getImageData(Math.max(0,Math.min(W-1,x|0)),Math.max(0,Math.min(H-1,y|0)),1,1).data[3]>20;
-}
-function stamp(x,y){
- const rad=+size.value/2, op=+opacity.value/100;
- t.clearRect(0,0,W,H);
- t.globalCompositeOperation='source-over';t.globalAlpha=op;
- for(let k=0;k<3;k++){
-  const j=rad*.07,xx=x+(Math.random()-.5)*j,yy=y+(Math.random()-.5)*j;
-  t.beginPath();t.ellipse(xx,yy,rad*(.95+Math.random()*.08),rad*(.72+Math.random()*.18),Math.random()*.2,0,Math.PI*2);
-  t.fillStyle=palette.find(p=>p.n===selected).hex;t.fill();
- }
- t.globalCompositeOperation='destination-in';t.globalAlpha=1;t.drawImage(getMask(selected),0,0,W,H);
- ctx.drawImage(tmp,0,0);
-}
-function seg(a,b){const d=Math.hypot(b.x-a.x,b.y-a.y),step=Math.max(3,+size.value*.13),n=Math.ceil(d/step);for(let i=0;i<=n;i++){const q=i/n;stamp(a.x+(b.x-a.x)*q,a.y+(b.y-a.y)*q)}}
-c.addEventListener('pointerdown',e=>{e.preventDefault();const p=pos(e);if(!maskHit(selected,p.x,p.y)){status.textContent=`Start inside a number ${selected} area.`;return}save();drawing=true;last=p;c.setPointerCapture(e.pointerId);stamp(p.x,p.y);status.textContent=`Painting only inside mask ${selected}.`});
-c.addEventListener('pointermove',e=>{e.preventDefault();if(!drawing)return;const p=pos(e);seg(last,p);last=p});
-function end(e){drawing=false;last=null;try{c.releasePointerCapture(e.pointerId)}catch{}}c.addEventListener('pointerup',end);c.addEventListener('pointercancel',end);
-c.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});c.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
-const pal=document.getElementById('palette');palette.forEach(p=>{let b=document.createElement('button');b.className='swatch'+(p.n===2?' selected':'');b.style.background=p.hex;b.innerHTML=`${p.n}<small>${p.name}</small>`;b.onclick=()=>{selected=p.n;document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');status.textContent=`Selected ${p.n} — ${p.name}.`};pal.appendChild(b)});
-undo.onclick=()=>{if(!history.length)return;future.push(ctx.getImageData(0,0,W,H));ctx.putImageData(history.pop(),0,0)};
-redo.onclick=()=>{if(!future.length)return;history.push(ctx.getImageData(0,0,W,H));ctx.putImageData(future.pop(),0,0)};
-clear.onclick=()=>{save();ctx.clearRect(0,0,W,H)};
-refBtn.onclick=()=>{reference.style.display=reference.style.display==='block'?'none':'block'};
-exportBtn.onclick=()=>{const o=document.createElement('canvas');o.width=W;o.height=H;const x=o.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,W,H);x.drawImage(document.getElementById('guide'),0,0,W,H);x.drawImage(c,0,0);const a=document.createElement('a');a.download='fish-colored.png';a.href=o.toDataURL('image/png');a.click()};
+function drawMask(n,targetCtx){targetCtx.drawImage(getMask(n),0,0,getMask(n).naturalWidth,getMask(n).naturalHeight,0,0,W,H)}
+function maskHit(n,x,y){mctx.clearRect(0,0,W,H);drawMask(n,mctx);return mctx.getImageData(Math.max(0,Math.min(W-1,x|0)),Math.max(0,Math.min(H-1,y|0)),1,1).data[3]>20}
+function stamp(x,y){const rad=+size.value/2,op=+opacity.value/100;t.clearRect(0,0,W,H);t.globalCompositeOperation='source-over';t.globalAlpha=op;for(let k=0;k<3;k++){const j=rad*.07,xx=x+(Math.random()-.5)*j,yy=y+(Math.random()-.5)*j;t.beginPath();t.ellipse(xx,yy,rad*(.95+Math.random()*.08),rad*(.72+Math.random()*.18),Math.random()*.2,0,Math.PI*2);t.fillStyle=palette.find(p=>p.n===selected).hex;t.fill()}t.globalCompositeOperation='destination-in';t.globalAlpha=1;drawMask(selected,t);t.globalCompositeOperation='source-over';ctx.drawImage(tmp,0,0)}
+function seg(a,b){const d=Math.hypot(b.x-a.x,b.y-a.y),step=Math.max(3,+size.value*.13),n=Math.max(1,Math.ceil(d/step));for(let i=0;i<=n;i++){const q=i/n;stamp(a.x+(b.x-a.x)*q,a.y+(b.y-a.y)*q)}}
+c.addEventListener('pointerdown',e=>{e.preventDefault();const p=pos(e);if(!maskHit(selected,p.x,p.y)){status.textContent=`Start inside a number ${selected} area.`;return}save();drawing=true;last=p;c.setPointerCapture(e.pointerId);stamp(p.x,p.y);status.textContent=`Painting only inside mask ${selected}.`});c.addEventListener('pointermove',e=>{e.preventDefault();if(!drawing)return;const p=pos(e);seg(last,p);last=p});function end(e){drawing=false;last=null;try{c.releasePointerCapture(e.pointerId)}catch{}}c.addEventListener('pointerup',end);c.addEventListener('pointercancel',end);
+const pal=document.getElementById('palette');palette.forEach(p=>{const b=document.createElement('button');b.className='swatch'+(p.n===2?' selected':'');b.style.background=p.hex;b.innerHTML=`${p.n}<small>${p.name}</small>`;b.onclick=()=>{selected=p.n;document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');status.textContent=`Selected ${p.n} — ${p.name}.`};pal.appendChild(b)});
+undo.onclick=()=>{if(!history.length)return;future.push(ctx.getImageData(0,0,W,H));ctx.putImageData(history.pop(),0,0)};redo.onclick=()=>{if(!future.length)return;history.push(ctx.getImageData(0,0,W,H));ctx.putImageData(future.pop(),0,0)};clear.onclick=()=>{save();ctx.clearRect(0,0,W,H)};refBtn.onclick=()=>{reference.style.display=reference.style.display==='block'?'none':'block'};
+exportBtn.onclick=()=>{const o=document.createElement('canvas');o.width=W;o.height=H;const x=o.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,W,H);x.drawImage(guide,0,0,W,H);x.drawImage(c,0,0,W,H);const a=document.createElement('a');a.download='fish-colored.png';a.href=o.toDataURL('image/png');a.click()};
 </script></body></html>
