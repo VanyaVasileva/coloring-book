@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Color Sketchbook — Manual Region Test</title>
+<style>
+:root{--bg:#f7f4ed;--panel:#fffdf9;--ink:#282621;--line:#d8d1c5;--muted:#756f65}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{padding:13px 16px;background:#fff;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+h1{font:500 20px Georgia,serif;margin:0}
+button{border:1px solid #cfc7ba;background:#fff;border-radius:9px;padding:9px 11px;font-size:13px;color:var(--ink)}
+button.active{background:var(--ink);color:#fff}
+main{display:grid;grid-template-columns:205px minmax(0,1fr) 245px;min-height:calc(100vh - 58px)}
+aside{padding:14px;background:rgba(255,255,255,.42)} .left{border-right:1px solid var(--line)} .right{border-left:1px solid var(--line)}
+.stage{padding:16px;display:flex;justify-content:center;align-items:flex-start}
+.shell{position:relative;width:min(100%,760px);aspect-ratio:1208/1279;background:#fff;box-shadow:0 4px 24px #0001;overflow:hidden}
+#guide,#paint{position:absolute;inset:0;width:100%;height:100%;display:block} #paint{touch-action:none;-ms-touch-action:none;user-select:none;-webkit-user-select:none}
+#guide{z-index:1;pointer-events:none} #paint{z-index:2;touch-action:none}
+.label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#69635b;margin:14px 0 7px}
+.tools{display:grid;gap:7px} .palette{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.swatch{height:48px;border:1px solid #cfc7ba;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:700;position:relative}
+.swatch.selected{outline:3px solid #282621;outline-offset:2px} .swatch small{position:absolute;right:5px;bottom:3px;font-size:9px;font-weight:500}
+input[type=range]{width:100%} .info{font-size:12px;line-height:1.45;color:var(--muted)} .pill{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;margin-top:8px}
+#ref{width:100%;display:none;border:1px solid var(--line);border-radius:10px}
+@media(max-width:900px){main{grid-template-columns:1fr}.stage{order:1;padding:8px}.left{order:2;border:0;border-top:1px solid var(--line)}.right{order:3;border:0;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header>
+<h1>Color Sketchbook — Fish · Manual Region Engine</h1>
+<div><button id="refBtn">Reference</button> <button id="exportBtn">Export PNG</button></div>
+</header>
+<main>
+<aside class="left">
+<div class="label">Tool</div>
+<div class="tools"><button id="penBtn" class="active">Traditional Acrylic</button><button id="eraserBtn">Eraser</button></div>
+<div class="label">Brush size</div><input id="size" type="range" min="8" max="90" value="34">
+<div class="label">Opacity</div><input id="opacity" type="range" min="40" max="100" value="96">
+<div class="label">Actions</div>
+<div style="display:flex;gap:7px"><button id="undo" style="flex:1">Undo</button><button id="redo" style="flex:1">Redo</button></div>
+<button id="clear" style="width:100%;margin-top:7px">Clear Colors</button>
+<div class="label">What is different</div>
+<div class="info">This version does <b>not</b> detect regions from the black lines. The regions are hand-authored and invisible. Your stroke is clipped to the exact region where the Pencil first touches. Paint sits <b>above</b> the guide, so it covers the line and number.</div>
+<div id="status" class="pill">Select the matching numbered color, then begin inside one of the mapped areas.</div>
+</aside>
+<section class="stage">
+<div class="shell"><img id="guide" src="fish-guide.png"><canvas id="paint" width="1208" height="1279"></canvas></div>
+</section>
+<aside class="right">
+<div class="label">Palette</div><div id="palette" class="palette"></div>
+<div class="label">Reference</div><img id="ref" src="fish-guide.png">
+<div class="info" style="margin-top:8px">For this engine test the same clean numbered fish is used as the reference. The important test is the clipping behavior.</div>
+</aside>
+</main>
+<script>
+const W=1208,H=1279, canvas=document.getElementById('paint'),ctx=canvas.getContext('2d');
+const palette=[
+ {n:1,name:'Ivory',hex:'#F1E5C8'},
+ {n:2,name:'Coral',hex:'#D97B66'},
+ {n:3,name:'Ochre',hex:'#C99A3D'},
+ {n:4,name:'Sea Blue',hex:'#6F9EB1'},
+ {n:5,name:'Sage',hex:'#879B78'},
+ {n:6,name:'Deep Teal',hex:'#315F63'}
+];
+
+const REGION_DEFS = [
+  // Large main regions
+  {id:'head1', n:1, path:'M20 570 C55 465 190 405 330 350 L420 345 C365 430 330 560 345 690 C300 780 170 840 75 760 C35 720 10 645 20 570 Z'},
+  {id:'body3', n:3, path:'M330 350 C470 330 680 350 935 520 C955 650 910 805 790 900 C640 965 475 950 345 885 C325 760 330 620 345 500 C350 440 345 390 330 350 Z'},
+  {id:'eyeRing3', n:3, ellipse:[255,585,88,82]},
+  {id:'eye6', n:6, ellipse:[255,585,38,38]},
+  {id:'cheek3', n:3, path:'M285 625 C345 620 385 650 395 710 C385 775 350 825 305 842 C335 755 330 690 285 625 Z'},
+  {id:'dorsal5', n:5, path:'M445 340 C490 230 595 145 705 160 C740 230 770 300 850 375 C730 360 610 345 445 340 Z'},
+  {id:'tail5', n:5, path:'M940 520 C1000 400 1080 285 1180 285 C1195 455 1165 540 1100 620 C1165 700 1190 795 1175 900 C1070 900 1005 815 935 760 C965 675 965 600 940 520 Z'},
+  {id:'bottomFin5', n:5, path:'M575 900 C650 930 760 925 865 895 C915 965 920 1065 865 1135 C740 1130 640 1055 575 900 Z'},
+  {id:'smallFin5', n:5, path:'M255 850 C310 865 360 885 410 920 C400 1010 345 1055 280 1035 C250 980 245 915 255 850 Z'},
+  {id:'pectoral1', n:1, path:'M430 690 C500 675 600 710 675 765 C650 845 585 875 505 840 C455 810 425 760 430 690 Z'},
+  {id:'mouth1', n:1, path:'M25 590 C70 585 105 615 120 650 C95 675 65 670 35 635 Z'},
+  {id:'brow2', n:2, path:'M195 430 C255 390 320 390 365 430 C330 475 265 485 205 465 Z'},
+
+  // Body spots - all intentionally independent, so a stroke cannot jump between them.
+  {id:'s01',n:4,ellipse:[395,390,40,34]},
+  {id:'s02',n:4,ellipse:[500,365,43,37]},
+  {id:'s03',n:4,ellipse:[615,390,42,35]},
+  {id:'s04',n:4,ellipse:[690,455,38,34]},
+  {id:'s05',n:4,ellipse:[775,470,36,32]},
+  {id:'s06',n:4,ellipse:[850,505,32,29]},
+  {id:'s07',n:4,ellipse:[620,500,47,44]},
+  {id:'s08',n:4,ellipse:[710,535,34,31]},
+  {id:'s09',n:4,ellipse:[790,555,39,35]},
+  {id:'s10',n:4,ellipse:[865,575,31,28]},
+  {id:'s11',n:4,ellipse:[570,585,31,29]},
+  {id:'s12',n:4,ellipse:[655,610,40,35]},
+  {id:'s13',n:4,ellipse:[745,625,35,31]},
+  {id:'s14',n:4,ellipse:[830,645,37,34]},
+  {id:'s15',n:4,ellipse:[690,690,34,31]},
+  {id:'s16',n:4,ellipse:[770,705,35,32]},
+  {id:'s17',n:4,ellipse:[850,720,34,31]},
+  {id:'s18',n:4,ellipse:[735,770,31,29]},
+  {id:'s19',n:4,ellipse:[810,785,33,30]},
+  {id:'s20',n:4,ellipse:[765,845,34,31]},
+  {id:'spot3',n:3,ellipse:[555,505,55,58]},
+  {id:'tiny1',n:1,ellipse:[575,640,30,29]},
+  {id:'tiny3',n:3,ellipse:[520,905,32,20]},
+];
+
+function buildPath(r){
+  if(r.ellipse){const [cx,cy,rx,ry]=r.ellipse;const p=new Path2D();p.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);return p}
+  return new Path2D(r.path);
+}
+REGION_DEFS.forEach(r=>r.p=buildPath(r));
+let color=palette[1], tool='pen', active=null, drawing=false, last=null;
+let undoStack=[],redoStack=[];
+function snapshot(){undoStack.push(ctx.getImageData(0,0,W,H));if(undoStack.length>25)undoStack.shift();redoStack=[]}
+function restore(img){ctx.putImageData(img,0,0)}
+function point(ev){const r=canvas.getBoundingClientRect();return {x:(ev.clientX-r.left)*W/r.width,y:(ev.clientY-r.top)*H/r.height}}
+function regionAt(x,y){for(let i=REGION_DEFS.length-1;i>=0;i--)if(ctx.isPointInPath(REGION_DEFS[i].p,x,y))return REGION_DEFS[i];return null}
+function stamp(x,y,region,erase=false){
+  const radius=+size.value/2, op=+opacity.value/100;
+  ctx.save();ctx.clip(region.p);
+  ctx.globalAlpha=op;
+  ctx.globalCompositeOperation=erase?'destination-out':'source-over';
+  const jitter=radius*.08;
+  for(let k=0;k<3;k++){
+    const jx=x+(Math.random()-.5)*jitter, jy=y+(Math.random()-.5)*jitter;
+    ctx.beginPath();ctx.ellipse(jx,jy,radius*(.92+Math.random()*.12),radius*(.72+Math.random()*.16),Math.random()*.25,0,Math.PI*2);
+    ctx.fillStyle=erase?'rgba(0,0,0,1)':color.hex;ctx.fill();
+  }
+  ctx.restore();
+}
+function segment(a,b,region,erase){
+  const d=Math.hypot(b.x-a.x,b.y-a.y), step=Math.max(2,+size.value*.13), n=Math.ceil(d/step);
+  for(let i=0;i<=n;i++){const t=i/n;stamp(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,region,erase)}
+}
+canvas.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  e.preventDefault();const p=point(e),r=regionAt(p.x,p.y);
+  if(!r){status.textContent='That part is not mapped in this first test.';return}
+  if(tool==='pen' && r.n!==color.n){status.textContent=`This area is number ${r.n}. Choose color ${r.n} first.`;return}
+  snapshot();drawing=true;active=r;last=p;canvas.setPointerCapture(e.pointerId);
+  stamp(p.x,p.y,r,tool==='eraser');
+  status.textContent=`Locked to region ${r.id} · number ${r.n}.`;
+});
+canvas.addEventListener('pointermove',e=>{e.preventDefault();if(!drawing)return;const p=point(e);segment(last,p,active,tool==='eraser');last=p});
+function end(e){if(!drawing)return;drawing=false;active=null;last=null;try{canvas.releasePointerCapture(e.pointerId)}catch{}}
+canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
+
+canvas.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+canvas.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+
+const pal=document.getElementById('palette');
+palette.forEach(c=>{const b=document.createElement('button');b.className='swatch';b.style.background=c.hex;b.innerHTML=`${c.n}<small>${c.name}</small>`;b.onclick=()=>{color=c;document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');status.textContent=`Selected ${c.n} — ${c.name}.`};pal.appendChild(b);if(c.n===2)b.classList.add('selected')});
+penBtn.onclick=()=>{tool='pen';penBtn.classList.add('active');eraserBtn.classList.remove('active')};
+eraserBtn.onclick=()=>{tool='eraser';eraserBtn.classList.add('active');penBtn.classList.remove('active')};
+clear.onclick=()=>{snapshot();ctx.clearRect(0,0,W,H)};
+undo.onclick=()=>{if(!undoStack.length)return;redoStack.push(ctx.getImageData(0,0,W,H));restore(undoStack.pop())};
+redo.onclick=()=>{if(!redoStack.length)return;undoStack.push(ctx.getImageData(0,0,W,H));restore(redoStack.pop())};
+refBtn.onclick=()=>{const r=document.getElementById('ref');r.style.display=r.style.display==='block'?'none':'block'};
+exportBtn.onclick=()=>{
+ const out=document.createElement('canvas');out.width=W;out.height=H;const o=out.getContext('2d');
+ o.fillStyle='#fff';o.fillRect(0,0,W,H);o.drawImage(document.getElementById('guide'),0,0,W,H);o.drawImage(canvas,0,0);
+ const a=document.createElement('a');a.download='fish-coloring-test.png';a.href=out.toDataURL('image/png');a.click();
+};
+</script>
+</body></html>
