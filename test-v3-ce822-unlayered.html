@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Acrylic v3 — ce822 without layered stamp buildup</title>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}#version{display:block;width:100%;height:100%;border:0;background:#f5f2eb}</style>
+</head>
+<body>
+<iframe id="version" src="./test-v3-ce822.html?v=unlayered-1" title="Acrylic v3 ce822 with same-stroke layer buildup reduced"></iframe>
+<script>
+(() => {
+  'use strict';
+  const host = document.getElementById('version');
+  const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+
+  function attach(){
+    let outer;
+    try{outer=host.contentDocument;}catch(_){return false;}
+    if(!outer)return false;
+    const inner=outer.getElementById('app');
+    if(!inner)return false;
+
+    let d,w;
+    try{d=inner.contentDocument;w=inner.contentWindow;}catch(_){return false;}
+    if(!d||!w||!d.documentElement)return false;
+    if(d.documentElement.dataset.ce822Unlayered==='1')return true;
+    if(d.documentElement.dataset.cityToolsV3Final!=='1')return false;
+
+    const $=id=>d.getElementById(id);
+    const paint=$('paint');
+    const opacity=$('opacity');
+    const paintBtn=$('paintBtn');
+    const fillBtn=$('fillBtnV3');
+    const status=$('status');
+    if(!paint||!opacity||!paintBtn)return false;
+
+    const ctx=paint.getContext('2d',{alpha:true,desynchronized:true});
+    if(!ctx||typeof ctx.drawImage!=='function')return false;
+    const nativeDrawImage=ctx.drawImage.bind(ctx);
+    let session=null;
+    const activePointers=new Set();
+
+    const isPaintMode=()=>paintBtn.classList.contains('active') && !(fillBtn&&fillBtn.classList.contains('fillActiveV3'));
+    const looksLikeTip=(source,args)=>source&&typeof source.width==='number'&&typeof source.height==='number'&&args.length===2&&source.width>=10&&source.height>=10&&source.width<=260&&source.height<=260;
+
+    ctx.drawImage=function(source,...args){
+      if(session&&!session.cancelled&&looksLikeTip(source,args)&&ctx.globalCompositeOperation==='source-over'){
+        const pc=session.pctx;
+        const m=typeof ctx.getTransform==='function'?ctx.getTransform():null;
+        const relativeAlpha=clamp(ctx.globalAlpha/Math.max(.001,session.baseAlpha),.82,1.12);
+        pc.save();
+        if(m&&typeof pc.setTransform==='function')pc.setTransform(m.a,m.b,m.c,m.d,m.e,m.f);
+        pc.globalCompositeOperation='source-over';
+        pc.globalAlpha=Math.min(1,relativeAlpha);
+        pc.drawImage(source,...args);
+        pc.restore();
+        return;
+      }
+      return nativeDrawImage(source,...args);
+    };
+
+    function begin(e){
+      if(!isPaintMode())return;
+      activePointers.add(e.pointerId);
+      if(activePointers.size!==1){if(session)session.cancelled=true;return;}
+      const buffer=d.createElement('canvas');
+      buffer.width=paint.width;buffer.height=paint.height;
+      const pctx=buffer.getContext('2d',{alpha:true,desynchronized:true});
+      session={pointerId:e.pointerId,buffer,pctx,baseAlpha:clamp((+opacity.value/100)*.34,.01,.34),cancelled:false};
+    }
+
+    function finish(e,cancel){
+      activePointers.delete(e.pointerId);
+      if(!session)return;
+      if(cancel)session.cancelled=true;
+      if(activePointers.size)return;
+      const s=session;session=null;
+      if(s.cancelled)return;
+      ctx.save();
+      if(typeof ctx.setTransform==='function')ctx.setTransform(1,0,0,1,0,0);
+      ctx.globalCompositeOperation='source-over';
+      ctx.globalAlpha=s.baseAlpha;
+      nativeDrawImage(s.buffer,0,0);
+      ctx.restore();
+    }
+
+    paint.addEventListener('pointerdown',begin,true);
+    paint.addEventListener('pointerup',e=>finish(e,false));
+    paint.addEventListener('pointercancel',e=>finish(e,true));
+    d.documentElement.dataset.ce822Unlayered='1';
+    if(status)status.title='ce822 preserved; this test only reduces visible same-stroke stamp layering by compositing each stroke once.';
+    return true;
+  }
+
+  function start(){
+    let tries=0;
+    const timer=setInterval(()=>{
+      tries++;
+      if(attach()||tries>240)clearInterval(timer);
+    },50);
+  }
+  host.addEventListener('load',start);
+  if(host.contentDocument)start();
+})();
+</script>
+</body>
+</html>
