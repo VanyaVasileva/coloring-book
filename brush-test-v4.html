@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Acrylic v3 + Brush Cursor Test</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
+#app{display:block;width:100%;height:100%;border:0;background:#f5f2eb}
+</style>
+</head>
+<body>
+<iframe id="app" src="./brush-test-v3.html" title="Acrylic v3 brush with optional visible cursor"></iframe>
+<script>
+(() => {
+  'use strict';
+  const frame=document.getElementById('app');
+  frame.addEventListener('load',()=>{
+    let d,w;
+    try{d=frame.contentDocument;w=frame.contentWindow;}catch(_){return;}
+    if(!d || d.documentElement.dataset.cursorV4) return;
+    d.documentElement.dataset.cursorV4='1';
+
+    const $=id=>d.getElementById(id);
+    const paint=$('paint'),viewport=$('viewport'),size=$('size'),paintBtn=$('paintBtn'),moveBtn=$('moveBtn'),eraseBtn=$('eraseBtn'),status=$('status');
+    const aside=d.querySelector('aside');
+    if(!paint||!viewport||!size||!aside) return;
+
+    const style=d.createElement('style');
+    style.textContent=`
+      #brushCursorV4{
+        position:absolute;left:0;top:0;z-index:30;display:none;
+        width:40px;height:40px;border-radius:50%;pointer-events:none;
+        border:1px solid rgba(255,255,255,.96);
+        box-shadow:0 0 0 1px rgba(20,20,20,.82),0 1px 5px rgba(0,0,0,.26);
+        transform:translate(-50%,-50%);
+        will-change:left,top,width,height;
+      }
+      #brushCursorV4::after{
+        content:'';position:absolute;left:50%;top:50%;width:3px;height:3px;border-radius:50%;
+        background:rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(20,20,20,.76);
+        transform:translate(-50%,-50%);
+      }
+      .cursorToggleV4{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px;font-size:12px;font-weight:700}
+      .cursorToggleV4 input{width:19px;height:19px;accent-color:var(--ink)}
+      .cursorHintV4{font-size:10px;color:#716b62;line-height:1.35;margin-top:5px}
+    `;
+    d.head.appendChild(style);
+
+    const cursor=d.createElement('div');
+    cursor.id='brushCursorV4';
+    viewport.appendChild(cursor);
+
+    const label=d.createElement('div');
+    label.className='label';
+    label.textContent='Brush cursor';
+    const toggleRow=d.createElement('label');
+    toggleRow.className='cursorToggleV4';
+    toggleRow.innerHTML='<span>Show brush outline</span><input id="cursorToggleV4" type="checkbox" checked>';
+    const hint=d.createElement('div');
+    hint.className='cursorHintV4';
+    hint.textContent='Procreate-style size preview: the ring follows the pointer and scales with the current brush or eraser size.';
+    const statusLabel=[...aside.querySelectorAll('.label')].find(el=>el.textContent.trim().toLowerCase()==='status');
+    if(statusLabel){aside.insertBefore(label,statusLabel);aside.insertBefore(toggleRow,statusLabel);aside.insertBefore(hint,statusLabel);}else{aside.append(label,toggleRow,hint);}
+    const toggle=$('cursorToggleV4');
+
+    let enabled=true,lastEvent=null,inside=false;
+    const isMove=()=>moveBtn&&moveBtn.classList.contains('active');
+    const isErase=()=>eraseBtn&&eraseBtn.classList.contains('active');
+
+    function diameterPx(){
+      const r=paint.getBoundingClientRect();
+      const canvasW=paint.width||1000;
+      const toolFactor=isErase()?.88:1;
+      return Math.max(7,(+size.value)*toolFactor*(r.width/canvasW));
+    }
+    function place(e){
+      if(!enabled||isMove()) {cursor.style.display='none';return;}
+      const r=viewport.getBoundingClientRect();
+      cursor.style.left=(e.clientX-r.left)+'px';
+      cursor.style.top=(e.clientY-r.top)+'px';
+      const dia=diameterPx();
+      cursor.style.width=dia+'px';cursor.style.height=dia+'px';
+      cursor.style.display='block';
+    }
+    function syncCursor(){
+      enabled=!!toggle.checked;
+      if(isMove()){
+        paint.style.cursor='grab';cursor.style.display='none';
+      }else if(enabled){
+        paint.style.cursor='none';
+        if(inside&&lastEvent) place(lastEvent);
+      }else{
+        paint.style.cursor='crosshair';cursor.style.display='none';
+      }
+    }
+
+    paint.addEventListener('pointerenter',e=>{inside=true;lastEvent=e;place(e);});
+    paint.addEventListener('pointermove',e=>{inside=true;lastEvent=e;place(e);});
+    paint.addEventListener('pointerdown',e=>{inside=true;lastEvent=e;place(e);});
+    paint.addEventListener('pointerup',e=>{lastEvent=e;if(e.pointerType==='touch'){inside=false;cursor.style.display='none';}else place(e);});
+    paint.addEventListener('pointercancel',()=>{inside=false;cursor.style.display='none';});
+    paint.addEventListener('pointerleave',()=>{inside=false;cursor.style.display='none';});
+    size.addEventListener('input',()=>{if(inside&&lastEvent)place(lastEvent);});
+    toggle.addEventListener('change',()=>{syncCursor();if(status)status.textContent=toggle.checked?'Brush cursor ON — the outline shows the current brush size.':'Brush cursor OFF — painting behavior is unchanged.';});
+    [paintBtn,moveBtn,eraseBtn].filter(Boolean).forEach(btn=>btn.addEventListener('click',()=>w.setTimeout(syncCursor,0)));
+    w.addEventListener('resize',()=>{if(inside&&lastEvent)place(lastEvent);});
+
+    syncCursor();
+  });
+})();
+</script>
+</body>
+</html>
