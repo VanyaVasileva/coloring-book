@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Acrylic v3 + Brush Cursor</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
+#app{display:block;width:100%;height:100%;border:0;background:#f5f2eb}
+</style>
+</head>
+<body>
+<iframe id="app" src="./brush-test-v3.html" title="Original Acrylic v3 with optional brush cursor and edge cleanup"></iframe>
+<script>
+(() => {
+  'use strict';
+  const frame=document.getElementById('app');
+  frame.addEventListener('load',()=>{
+    let d,w;
+    try{d=frame.contentDocument;w=frame.contentWindow;}catch(_){return;}
+    if(!d || d.documentElement.dataset.v6Addon) return;
+    d.documentElement.dataset.v6Addon='1';
+
+    const $=id=>d.getElementById(id);
+    const paint=$('paint'),viewport=$('viewport'),size=$('size'),color=$('color');
+    const paintBtn=$('paintBtn'),moveBtn=$('moveBtn'),eraseBtn=$('eraseBtn'),status=$('status');
+    const aside=d.querySelector('aside');
+    if(!paint||!viewport||!size||!color||!aside) return;
+    const ctx=paint.getContext('2d',{alpha:true,desynchronized:true});
+
+    /* Cursor only: this does not touch the v3 brush engine. */
+    const style=d.createElement('style');
+    style.textContent=`
+      #brushCursorV6{position:absolute;left:0;top:0;z-index:30;display:none;width:40px;height:40px;border-radius:50%;pointer-events:none;border:1px solid rgba(255,255,255,.96);box-shadow:0 0 0 1px rgba(20,20,20,.82),0 1px 5px rgba(0,0,0,.26);transform:translate(-50%,-50%);will-change:left,top,width,height}
+      #brushCursorV6::after{content:'';position:absolute;left:50%;top:50%;width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(20,20,20,.76);transform:translate(-50%,-50%)}
+      .cursorToggleV6{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px;font-size:12px;font-weight:700}
+      .cursorToggleV6 input{width:19px;height:19px;accent-color:var(--ink)}
+      .cursorHintV6{font-size:10px;color:#716b62;line-height:1.35;margin-top:5px}
+    `;
+    d.head.appendChild(style);
+
+    const cursor=d.createElement('div');
+    cursor.id='brushCursorV6';
+    viewport.appendChild(cursor);
+
+    const label=d.createElement('div');
+    label.className='label';
+    label.textContent='Brush cursor';
+    const toggleRow=d.createElement('label');
+    toggleRow.className='cursorToggleV6';
+    toggleRow.innerHTML='<span>Show brush outline</span><input id="cursorToggleV6" type="checkbox" checked>';
+    const hint=d.createElement('div');
+    hint.className='cursorHintV6';
+    hint.textContent='Procreate-style size preview: the ring follows the pointer and scales with the current brush or eraser size.';
+    const statusLabel=[...aside.querySelectorAll('.label')].find(el=>el.textContent.trim().toLowerCase()==='status');
+    if(statusLabel){aside.insertBefore(label,statusLabel);aside.insertBefore(toggleRow,statusLabel);aside.insertBefore(hint,statusLabel);}else{aside.append(label,toggleRow,hint);}
+    const toggle=$('cursorToggleV6');
+
+    let enabled=true,lastEvent=null,inside=false;
+    try{const saved=w.localStorage.getItem('acrylicV3Cursor');if(saved!==null)enabled=saved==='1';}catch(_){}
+    toggle.checked=enabled;
+    const isMove=()=>moveBtn&&moveBtn.classList.contains('active');
+    const isErase=()=>eraseBtn&&eraseBtn.classList.contains('active');
+    const isPaint=()=>paintBtn&&paintBtn.classList.contains('active');
+
+    function diameterPx(){const r=paint.getBoundingClientRect(),canvasW=paint.width||1000,toolFactor=isErase()?.88:1;return Math.max(7,(+size.value)*toolFactor*(r.width/canvasW));}
+    function place(e){if(!enabled||isMove()){cursor.style.display='none';return;}const r=viewport.getBoundingClientRect(),dia=diameterPx();cursor.style.left=(e.clientX-r.left)+'px';cursor.style.top=(e.clientY-r.top)+'px';cursor.style.width=dia+'px';cursor.style.height=dia+'px';cursor.style.display='block';}
+    function syncCursor(){enabled=!!toggle.checked;if(isMove()){paint.style.cursor='grab';cursor.style.display='none';}else if(enabled){paint.style.cursor='none';if(inside&&lastEvent)place(lastEvent);}else{paint.style.cursor='crosshair';cursor.style.display='none';}}
+    paint.addEventListener('pointerenter',e=>{inside=true;lastEvent=e;place(e);});
+    paint.addEventListener('pointermove',e=>{inside=true;lastEvent=e;place(e);});
+    paint.addEventListener('pointerup',e=>{lastEvent=e;if(e.pointerType==='touch'){inside=false;cursor.style.display='none';}else place(e);});
+    paint.addEventListener('pointercancel',()=>{inside=false;cursor.style.display='none';});
+    paint.addEventListener('pointerleave',()=>{inside=false;cursor.style.display='none';});
+    size.addEventListener('input',()=>{if(inside&&lastEvent)place(lastEvent);});
+    toggle.addEventListener('change',()=>{try{w.localStorage.setItem('acrylicV3Cursor',toggle.checked?'1':'0');}catch(_){}syncCursor();});
+    [paintBtn,moveBtn,eraseBtn].filter(Boolean).forEach(btn=>btn.addEventListener('click',()=>w.setTimeout(syncCursor,0)));
+    w.addEventListener('resize',()=>{if(inside&&lastEvent)place(lastEvent);});
+    syncCursor();
+
+    /*
+      Edge cleanup: the original v3 paints normally and remains untouched.
+      After a stroke ends, this only corrects the thin outer fringe where the
+      new stroke overlaps a DIFFERENT existing paint color. Blank canvas and
+      same-color second passes are left alone, preserving v3 translucency,
+      texture, spacing, pressure and natural pigment buildup.
+    */
+    const activePointers=new Set();
+    let edgeSession=null;
+
+    function canvasPoint(e){const r=paint.getBoundingClientRect();return{x:(e.clientX-r.left)*paint.width/r.width,y:(e.clientY-r.top)*paint.height/r.height};}
+    function expandBounds(s,p){const pad=(+size.value)*.78+5;s.minX=Math.min(s.minX,p.x-pad);s.minY=Math.min(s.minY,p.y-pad);s.maxX=Math.max(s.maxX,p.x+pad);s.maxY=Math.max(s.maxY,p.y+pad);}
+    function hexRgb(hex){return[parseInt(hex.slice(1,3),16),parseInt(hex.slice(3,5),16),parseInt(hex.slice(5,7),16)];}
+    function colorDistance(r1,g1,b1,r2,g2,b2){const dr=r1-r2,dg=g1-g2,db=b1-b2;return Math.sqrt(dr*dr+dg*dg+db*db);}
+
+    function startEdgeSession(e){
+      if(!isPaint()||activePointers.size!==1)return;
+      const base=d.createElement('canvas');base.width=paint.width;base.height=paint.height;base.getContext('2d').drawImage(paint,0,0);
+      const p=canvasPoint(e),rgb=hexRgb(color.value);
+      edgeSession={base,rgb,minX:p.x,maxX:p.x,minY:p.y,maxY:p.y,cancelled:false};
+      expandBounds(edgeSession,p);
+    }
+
+    function cleanOverlapEdge(s){
+      if(!s||s.cancelled||!isPaint())return;
+      const W=paint.width,H=paint.height;
+      const x=Math.max(0,Math.floor(s.minX)),y=Math.max(0,Math.floor(s.minY));
+      const x2=Math.min(W,Math.ceil(s.maxX)),y2=Math.min(H,Math.ceil(s.maxY));
+      const ww=x2-x,hh=y2-y;if(ww<2||hh<2)return;
+      const bctx=s.base.getContext('2d',{willReadFrequently:true});
+      let before,after;
+      try{before=bctx.getImageData(x,y,ww,hh);after=ctx.getImageData(x,y,ww,hh);}catch(_){return;}
+      const n=ww*hh,changed=new Uint8Array(n),band=new Uint8Array(n),bd=before.data,ad=after.data;
+      for(let i=0;i<n;i++){
+        const k=i*4,delta=Math.abs(ad[k]-bd[k])+Math.abs(ad[k+1]-bd[k+1])+Math.abs(ad[k+2]-bd[k+2])+Math.abs(ad[k+3]-bd[k+3])*2;
+        if(delta>10)changed[i]=1;
+      }
+      for(let yy=1;yy<hh-1;yy++)for(let xx=1;xx<ww-1;xx++){
+        const i=yy*ww+xx;if(!changed[i])continue;
+        if(!changed[i-1]||!changed[i+1]||!changed[i-ww]||!changed[i+ww]||!changed[i-ww-1]||!changed[i-ww+1]||!changed[i+ww-1]||!changed[i+ww+1])band[i]=3;
+      }
+      for(let pass=2;pass>=1;pass--){
+        const next=band.slice();
+        for(let yy=1;yy<hh-1;yy++)for(let xx=1;xx<ww-1;xx++){
+          const i=yy*ww+xx;if(!changed[i]||band[i])continue;
+          if(band[i-1]>pass||band[i+1]>pass||band[i-ww]>pass||band[i+ww]>pass)next[i]=pass;
+        }
+        band.set(next);
+      }
+      const [cr,cg,cb]=s.rgb;
+      let touched=0;
+      for(let i=0;i<n;i++){
+        const ring=band[i];if(!ring)continue;
+        const k=i*4,ba=bd[k+3];
+        if(ba<18)continue; // blank canvas: leave original v3 edge exactly alone
+        const baseDist=colorDistance(bd[k],bd[k+1],bd[k+2],cr,cg,cb);
+        if(baseDist<52)continue; // same/similar color: keep natural v3 second-pass buildup
+        const afterDist=colorDistance(ad[k],ad[k+1],ad[k+2],cr,cg,cb);
+        const moved=colorDistance(ad[k],ad[k+1],ad[k+2],bd[k],bd[k+1],bd[k+2]);
+        if(afterDist<34||moved>150)continue; // already reads as the brush color / strong interior
+        const strength=ring===3?.56:ring===2?.34:.18;
+        const contamination=Math.max(.35,Math.min(1,afterDist/(afterDist+moved+1)));
+        const f=strength*contamination;
+        ad[k]=Math.round(ad[k]+(cr-ad[k])*f);
+        ad[k+1]=Math.round(ad[k+1]+(cg-ad[k+1])*f);
+        ad[k+2]=Math.round(ad[k+2]+(cb-ad[k+2])*f);
+        touched++;
+      }
+      if(touched)ctx.putImageData(after,x,y);
+    }
+
+    paint.addEventListener('pointerdown',e=>{
+      activePointers.add(e.pointerId);
+      if(activePointers.size===1)startEdgeSession(e);
+      else if(edgeSession)edgeSession.cancelled=true;
+    },true);
+    paint.addEventListener('pointermove',e=>{
+      if(!edgeSession||edgeSession.cancelled||!activePointers.has(e.pointerId))return;
+      const events=typeof e.getCoalescedEvents==='function'?e.getCoalescedEvents():null;
+      const arr=events&&events.length?events:[e];for(const ev of arr)expandBounds(edgeSession,canvasPoint(ev));
+    },true);
+    paint.addEventListener('pointerup',e=>{
+      activePointers.delete(e.pointerId);
+      if(edgeSession&&!edgeSession.cancelled&&activePointers.size===0){const s=edgeSession;edgeSession=null;w.setTimeout(()=>cleanOverlapEdge(s),0);}else if(activePointers.size===0)edgeSession=null;
+    });
+    paint.addEventListener('pointercancel',e=>{activePointers.delete(e.pointerId);if(edgeSession)edgeSession.cancelled=true;if(activePointers.size===0)edgeSession=null;});
+
+    if(status)status.title='Original Acrylic v3 brush engine; add-on only supplies the optional cursor and overlap-edge cleanup.';
+  });
+})();
+</script>
+</body>
+</html>
