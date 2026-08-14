@@ -10,8 +10,161 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
 </style>
 </head>
 <body>
-<iframe id="cityBase" src="./acrylic-v3-city-tools-base.html?v=natural-edge-1" title="Acrylic v3 City Tools"></iframe>
-<script src="./acrylic-v3-natural-edge.js?v=natural-edge-1"></script>
-<!-- natural edge deploy 2026-08-15 -->
+<iframe id="cityBase" src="./acrylic-v3-city-tools-base.html?v=live-filbert-3" title="Acrylic v3 City Tools"></iframe>
+<script>
+(() => {
+  'use strict';
+
+  const host = document.getElementById('cityBase');
+  if (!host) return;
+
+  let pollTimer = null;
+  const patchedContexts = new WeakSet();
+  const tipCache = new WeakMap();
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const smoothstep = (a, b, x) => {
+    x = clamp((x - a) / Math.max(0.0001, b - a), 0, 1);
+    return x * x * (3 - 2 * x);
+  };
+
+  function buildNaturalTip(d, source) {
+    const cached = tipCache.get(source);
+    if (cached) return cached;
+
+    const w = source.width | 0;
+    const h = source.height | 0;
+    if (w < 4 || h < 4) return source;
+
+    const out = d.createElement('canvas');
+    out.width = w;
+    out.height = h;
+    const o = out.getContext('2d', {willReadFrequently: true});
+    o.drawImage(source, 0, 0);
+
+    let img;
+    try {
+      img = o.getImageData(0, 0, w, h);
+    } catch (_) {
+      return source;
+    }
+
+    const data = img.data;
+    const cx = (w - 1) * 0.50;
+    const cy = (h - 1) * 0.50;
+    const rx = Math.max(2, w * 0.46);
+    const ry = Math.max(2, h * 0.36);
+
+    for (let y = 0; y < h; y++) {
+      const yn = (y - cy) / ry;
+      for (let x = 0; x < w; x++) {
+        const k = (y * w + x) * 4;
+        if (!data[k + 3]) continue;
+
+        const xn = (x - cx) / rx;
+        if (xn <= -1.06 || xn >= 1.05) {
+          data[k + 3] = 0;
+          continue;
+        }
+
+        // Filbert / loaded-acrylic dab: a restrained taper behind the stroke,
+        // a flatter body, and a rounded leading end. No random edge jitter.
+        const left = smoothstep(-1.02, -0.46, xn);
+        let right = 1;
+        if (xn > 0.46) {
+          const q = (xn - 0.46) / 0.59;
+          right = Math.sqrt(Math.max(0, 1 - q * q));
+        }
+        const crown = 0.96 + 0.04 * Math.cos(clamp(xn, -0.45, 0.45) * Math.PI);
+        const half = Math.max(0.035, left * right * crown);
+        const edge = Math.abs(yn) / half;
+
+        // About a 1-3 px feather on normal brush sizes: acrylic-soft, not blurry.
+        const mask = 1 - smoothstep(0.86, 1.02, edge);
+        data[k + 3] = Math.round(data[k + 3] * clamp(mask, 0, 1));
+      }
+    }
+
+    o.putImageData(img, 0, 0);
+    tipCache.set(source, out);
+    return out;
+  }
+
+  function patchPaintContext(d, paint) {
+    const ctx = paint.getContext('2d', {alpha: true, desynchronized: true});
+    if (!ctx || patchedContexts.has(ctx)) return true;
+
+    const nativeDrawImage = ctx.drawImage.bind(ctx);
+    const X_STRETCH = 1.15;
+    const Y_SCALE = 0.86;
+
+    ctx.drawImage = function(source, ...args) {
+      try {
+        // Acrylic v3 stamps are small offscreen canvases drawn with the 3-arg
+        // overload. Undo/history canvases are full-size, so they bypass this.
+        const isCanvas = source && typeof source.width === 'number' && typeof source.height === 'number';
+        const looksLikeTip = isCanvas && args.length === 2 && source.width >= 10 && source.height >= 10 && source.width <= 260 && source.height <= 260;
+        if (looksLikeTip) {
+          const shaped = buildNaturalTip(d, source);
+          const dx = Number(args[0]);
+          const dy = Number(args[1]);
+          const dw = source.width * X_STRETCH;
+          const dh = source.height * Y_SCALE;
+          const cx = dx + source.width / 2;
+          const cy = dy + source.height / 2;
+          return nativeDrawImage(shaped, cx - dw / 2, cy - dh / 2, dw, dh);
+        }
+      } catch (_) {}
+      return nativeDrawImage(source, ...args);
+    };
+
+    patchedContexts.add(ctx);
+    d.documentElement.dataset.naturalEdgeLive = '2';
+    return true;
+  }
+
+  function tryAttach() {
+    let baseDoc, inner, d;
+    try {
+      baseDoc = host.contentDocument;
+      inner = baseDoc && baseDoc.getElementById('app');
+      d = inner && inner.contentDocument;
+    } catch (_) {
+      return false;
+    }
+    if (!d || !d.documentElement) return false;
+    if (d.documentElement.dataset.naturalEdgeLive === '2') return true;
+
+    const paint = d.getElementById('paint');
+    if (!paint || !paint.width || !paint.height) return false;
+    return patchPaintContext(d, paint);
+  }
+
+  function startAttachLoop() {
+    if (pollTimer) clearInterval(pollTimer);
+    let tries = 0;
+    pollTimer = setInterval(() => {
+      tries++;
+      if (tryAttach() || tries > 240) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }, 40);
+  }
+
+  host.addEventListener('load', () => {
+    startAttachLoop();
+    try {
+      const baseDoc = host.contentDocument;
+      const inner = baseDoc && baseDoc.getElementById('app');
+      if (inner) inner.addEventListener('load', startAttachLoop, {once: true});
+    } catch (_) {}
+  });
+
+  startAttachLoop();
+})();
+
+</script>
+<!-- live filbert edge: no post-stroke resize; 2026-08-15 -->
 </body>
 </html>
