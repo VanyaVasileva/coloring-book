@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Color Sketchbook — City Demo</title>
+<style>
+:root{--bg:#f7f4ed;--panel:#fff;--ink:#292721;--line:#d8d1c5;--muted:#746e65}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overscroll-behavior:none}
+button,input{font:inherit}button{border:1px solid #cec7bb;background:#fff;color:var(--ink);border-radius:10px;padding:10px 12px}button.active{background:var(--ink);color:#fff;border-color:var(--ink)}button:disabled{opacity:.42;cursor:not-allowed}
+header{position:sticky;top:0;z-index:30;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;flex-wrap:wrap}
+h1{font:500 18px Georgia,serif;margin:0}.topbar{display:flex;gap:6px;flex-wrap:wrap}.topbar button{font-weight:700}
+main{display:grid;grid-template-columns:220px minmax(0,1fr) 260px;min-height:calc(100vh - 58px)}
+aside{background:#ffffffb8;padding:14px;min-width:0}.left{border-right:1px solid var(--line)}.right{border-left:1px solid var(--line)}
+.stage{min-width:0;padding:12px;display:flex;align-items:flex-start;justify-content:center;overflow:hidden}
+.viewport{position:relative;background:#fff;overflow:hidden;box-shadow:0 4px 22px #0001;touch-action:none;flex:none}
+.shell{position:absolute;inset:0;transform-origin:0 0}
+.layer{position:absolute;inset:0;width:100%;height:100%;display:block}
+#guideCanvas{z-index:1;pointer-events:none}#highlight{z-index:2;pointer-events:none;mix-blend-mode:multiply}#paint{z-index:3;touch-action:none;cursor:crosshair;mix-blend-mode:multiply}
+.label{margin:14px 0 7px;font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#69635b}
+.toolRow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.toolRow button{padding:10px 5px;font-size:12px;min-width:0}.toolRow .ic{display:block;font-size:17px;margin-bottom:3px}
+input[type=range]{width:100%}.rowLabel{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}.actions .wide{grid-column:1/-1}
+.status{font-size:12px;line-height:1.45;margin-top:10px;border:1px solid var(--line);background:#fff;border-radius:9px;padding:9px;min-height:58px}.diag{font-size:10px;color:#8a6e6e;margin-top:7px;white-space:pre-wrap}.navHint{font-size:11px;line-height:1.4;color:#625d55;margin-top:8px}
+.referenceThumb{width:100%;display:block;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:zoom-in}
+.palette{display:grid;grid-template-columns:1fr 1fr;gap:7px}.swatch{position:relative;min-height:59px;border-radius:9px;font-weight:800;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 7px}.swatch .num{display:flex;align-items:center;justify-content:center;width:31px;height:31px;border-radius:50%;border:2px solid #111;background:#fffffff0;color:#111;font-size:15px}.swatchMeta{display:grid;gap:2px;text-align:right}.swatch .hex{font-size:9px;opacity:.92}.swatch .pct{font-size:9px;opacity:.75}.swatch.selected{outline:3px solid #292721;outline-offset:2px}.swatch.dark{color:#fff}.swatch.done::after{content:'✓';position:absolute;right:4px;top:4px;width:19px;height:19px;border-radius:50%;background:#fff;border:1px solid #111;color:#111;display:flex;align-items:center;justify-content:center;font-size:12px}
+.colorGrid{display:grid;gap:8px}.colorRow{display:grid;grid-template-columns:52px 1fr;gap:8px}#customColor{width:52px;height:42px;padding:2px;border:1px solid var(--line);border-radius:8px;background:#fff}#hexColor{width:100%;height:42px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font:600 12px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase}.tones{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.tone{height:31px;padding:0;min-width:0;border-radius:7px}.current{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px}.dot{width:27px;height:27px;border-radius:7px;border:1px solid #aaa;flex:none}
+.mobileQuick{display:none}.mobileQuick button{flex:1;padding:10px 7px;font-weight:800}.mobileNumber{display:flex;align-items:center;justify-content:center;min-width:52px;border:1px solid #cec7bb;background:#fff;border-radius:10px;font-size:12px;font-weight:900}
+.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#000c;z-index:100;padding:16px}.modal.open{display:flex}.modalPanel{position:relative;width:min(96vw,1100px);height:min(92vh,1500px);background:#eee;overflow:hidden;border-radius:12px;touch-action:none}.refShell{position:absolute;inset:0;transform-origin:0 0}.refShell img{width:100%;height:100%;object-fit:contain;display:block;user-select:none;-webkit-user-drag:none}.modalControls{position:absolute;top:9px;left:9px;z-index:3;display:flex;gap:6px}.modalControls button,.closeRef{background:#fff}.closeRef{position:absolute;top:9px;right:9px;z-index:3;width:40px;height:40px;border-radius:50%;padding:0;font-size:20px}
+@media(max-width:900px){body{padding-bottom:72px}header{position:relative}main{grid-template-columns:1fr}.stage{order:1;padding:8px;overflow:hidden}.left{order:2;border:0;border-top:1px solid var(--line)}.right{order:3;border:0;border-top:1px solid var(--line)}aside{padding:14px}.palette{grid-template-columns:repeat(2,minmax(0,1fr))}.viewport{max-width:100%}.mobileQuick{display:flex;position:fixed;left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));z-index:85;gap:6px;padding:7px;background:#f7f4edee;border:1px solid #cfc7ba;border-radius:14px;box-shadow:0 4px 22px #0002;backdrop-filter:blur(10px)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Color Sketchbook — City</h1>
+  <div class="topbar">
+    <button id="zoomOut" type="button">−</button><button id="zoomReset" type="button">Reset</button><button id="zoomIn" type="button">+</button>
+    <button id="refBtn" type="button">Reference</button><button id="exportBtn" type="button">Export</button>
+  </div>
+</header>
+<main>
+  <aside class="left">
+    <div class="label">Tool</div>
+    <div class="toolRow"><button id="toolPaint" class="active" type="button"><span class="ic">🖌️</span>Paint</button><button id="toolErase" type="button"><span class="ic">🧼</span>Erase</button><button id="toolMove" type="button"><span class="ic">✋</span>Move</button></div>
+    <div class="navHint"><strong>Navigation:</strong> Paint/Erase with one finger. Use two fingers to move or pinch-zoom at any time. Move mode lets one finger pan without painting.</div>
+    <div class="label">Brush size</div><div class="rowLabel"><span>Size</span><span id="sizeVal">28</span></div><input id="size" type="range" min="4" max="90" value="28">
+    <div class="label">Opacity</div><div class="rowLabel"><span>Opacity</span><span id="opacityVal">100%</span></div><input id="opacity" type="range" min="20" max="100" value="100">
+    <div class="label">Actions</div><div class="actions"><button id="undo" type="button">Undo</button><button id="redo" type="button">Redo</button><button id="clear" class="wide" type="button">Clear All</button></div>
+    <div id="status" class="status">Loading artwork…</div><div id="diag" class="diag"></div>
+    <div class="label">Reference</div><img id="referenceThumb" class="referenceThumb" alt="Reference artwork">
+  </aside>
+  <section class="stage" id="stage"><div class="viewport" id="viewport"><div class="shell" id="shell"><canvas id="guideCanvas" class="layer"></canvas><canvas id="highlight" class="layer"></canvas><canvas id="paint" class="layer"></canvas></div></div></section>
+  <aside class="right">
+    <div class="label">Numbered colors</div><div id="palette" class="palette"></div>
+    <div class="label">Free color</div><div class="colorGrid"><div class="colorRow"><input id="customColor" type="color"><input id="hexColor" type="text" maxlength="7"></div><div class="current"><span id="currentDot" class="dot"></span><div><strong id="currentLabel">Palette 6</strong><div id="currentHex"></div></div></div></div>
+    <div class="label">Muted tones</div><div class="rowLabel"><span>Mute</span><span id="muteVal">0%</span></div><input id="mutedness" type="range" min="0" max="70" value="0"><div class="rowLabel"><span>Tone</span><span id="toneVal">0</span></div><input id="toneShift" type="range" min="-25" max="25" value="0"><div id="toneGrid" class="tones"></div>
+  </aside>
+</main>
+<div class="mobileQuick"><button id="mPaint" class="active" type="button">🖌️ Paint</button><button id="mMove" type="button">✋ Move</button><button id="mErase" type="button">🧼 Erase</button><div id="mNumber" class="mobileNumber">#6</div></div>
+<div id="refModal" class="modal"><div id="refPanel" class="modalPanel"><div id="refShell" class="refShell"><img id="refLarge" alt="Large reference"></div><div class="modalControls"><button id="refOut" type="button">−</button><button id="refReset" type="button">Reset</button><button id="refIn" type="button">+</button></div><button id="refClose" class="closeRef" type="button">×</button></div></div>
+<script>
+(() => {
+'use strict';
+const PALETTE=['#F2E9E6','#C2D4C1','#B5C2B5','#AFA89D','#8CB1A8','#309092','#006C6C','#065451','#003F3B','#6BAFAF','#7C8177','#505A51','#FBBBAB','#000C0C','#2E352E','#D9575D'];
+const DONE_THRESHOLD=.97, MAX_HISTORY=10, MIN_SCALE=1, MAX_SCALE=6, SAMPLE_W=250;
+const $=id=>document.getElementById(id);
+const stage=$('stage'),viewport=$('viewport'),shell=$('shell'),guideCanvas=$('guideCanvas'),highlight=$('highlight'),paint=$('paint');
+const gctx=guideCanvas.getContext('2d'),hctx=highlight.getContext('2d'),ctx=paint.getContext('2d',{alpha:true,desynchronized:true});
+const status=$('status'),diag=$('diag'),size=$('size'),opacity=$('opacity'),sizeVal=$('sizeVal'),opacityVal=$('opacityVal');
+let W=1000,H=1417,SAMPLE_H=Math.round(SAMPLE_W*H/W),guideImg=null,referenceSrc='',masks=[];
+let tool='paint',selected=6,currentColor=PALETTE[6],scale=1,tx=0,ty=0;
+let history=[],future=[],active=new Map(),mode=null,stroke=null,strokeStart=null,panState=null,gesture=null;
+let coverageCanvas=null,coverageCtx=null,maskIndices=new Map(),coverageCache=new Map();
+let highlightTemp=null,highlightTempCtx=null;
+const paletteEls=[];
+
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function isDark(hex){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return .299*r+.587*g+.114*b<130;}
+function normalizeHex(v){v=(v||'').trim();if(!v.startsWith('#'))v='#'+v;return /^#[0-9a-f]{6}$/i.test(v)?v.toUpperCase():null;}
+function pos(e){const r=paint.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height};}
+function midpoint(a){return{x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};}
+function distance(a){return Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);}
+function loadImage(src){return new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=src;});}
+
+function buildPalette(){
+  const wrap=$('palette');wrap.innerHTML='';
+  PALETTE.forEach((hex,n)=>{const b=document.createElement('button');b.type='button';b.className='swatch'+(isDark(hex)?' dark':'');b.dataset.n=n;b.style.background=hex;b.innerHTML=`<span class="num">${n}</span><span class="swatchMeta"><span class="hex">${hex}</span><span class="pct">0%</span></span>`;b.addEventListener('click',()=>selectNumber(n));wrap.appendChild(b);paletteEls[n]=b;});
+}
+function markSelected(){paletteEls.forEach((b,n)=>b&&b.classList.toggle('selected',n===selected));$('mNumber').textContent='#'+selected;}
+function selectNumber(n){if(paletteEls[n]?.disabled)return;selected=n;markSelected();setColor(PALETTE[n],`Palette ${n}`);setStatus();}
+function setDone(n,ratio){const b=paletteEls[n];if(!b)return false;const done=ratio>=DONE_THRESHOLD;b.disabled=done;b.classList.toggle('done',done);const pct=b.querySelector('.pct');if(pct)pct.textContent=done?'Done':Math.round(ratio*100)+'%';b.title=done?`Number ${n} complete`:`${Math.round(ratio*100)}% covered`;coverageCache.set(n,ratio);return done;}
+function nextIncomplete(after){for(let k=1;k<=PALETTE.length;k++){const n=(after+k)%PALETTE.length;if(!paletteEls[n]?.disabled)return n;}return null;}
+
+function hexToHsl(hex){const r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255,max=Math.max(r,g,b),min=Math.min(r,g,b);let h=0,s=0,l=(max+min)/2;if(max!==min){const d=max-min;s=l>.5?d/(2-max-min):d/(max+min);if(max===r)h=(g-b)/d+(g<b?6:0);else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h/=6;}return[h*360,s*100,l*100];}
+function hslToHex(h,s,l){h=((h%360)+360)%360;s=clamp(s,0,100)/100;l=clamp(l,0,100)/100;const a=s*Math.min(l,1-l),f=n=>{const k=(n+h/30)%12;return l-a*Math.max(-1,Math.min(k-3,9-k,1));};return'#'+[f(0),f(8),f(4)].map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('').toUpperCase();}
+function renderTones(){const [h,s,l]=hexToHsl(currentColor),m=+$('mutedness').value/100,shift=+$('toneShift').value;$('muteVal').textContent=$('mutedness').value+'%';$('toneVal').textContent=(shift>0?'+':'')+shift;const wrap=$('toneGrid');wrap.innerHTML='';[-24,-16,-8,0,8,16,24].forEach(d=>{const hex=hslToHex(h,s*(1-m),clamp(l+shift+d,5,95));const b=document.createElement('button');b.type='button';b.className='tone';b.style.background=hex;b.title=hex;b.addEventListener('click',()=>setColor(hex,'Muted tone'));wrap.appendChild(b);});}
+function setColor(hex,label){const h=normalizeHex(hex);if(!h)return false;currentColor=h;$('customColor').value=h;$('hexColor').value=h;$('currentDot').style.background=h;$('currentHex').textContent=h;$('currentLabel').textContent=label||`Palette ${selected}`;renderTones();drawHighlight();return true;}
+
+function ensureHighlightTemp(){if(highlightTemp&&highlightTemp.width===W&&highlightTemp.height===H)return;highlightTemp=document.createElement('canvas');highlightTemp.width=W;highlightTemp.height=H;highlightTempCtx=highlightTemp.getContext('2d');}
+function drawHighlight(){
+  hctx.clearRect(0,0,W,H);const mask=masks[selected];if(!mask)return;ensureHighlightTemp();const t=highlightTempCtx;t.clearRect(0,0,W,H);t.save();
+  t.globalAlpha=.11;t.fillStyle=currentColor;t.fillRect(0,0,W,H);
+  t.globalAlpha=.34;t.strokeStyle='#111';t.lineWidth=2;const step=30;t.beginPath();for(let x=-H;x<W+H;x+=step){t.moveTo(x,0);t.lineTo(x+H,H);}t.stroke();
+  t.globalAlpha=.18;t.beginPath();for(let x=0;x<W+H;x+=step*2){t.moveTo(x,0);t.lineTo(x-H,H);}t.stroke();
+  t.globalAlpha=1;t.globalCompositeOperation='destination-in';t.drawImage(mask,0,0,W,H);t.restore();hctx.drawImage(highlightTemp,0,0);
+}
+function buildMaskSamples(){SAMPLE_H=Math.round(SAMPLE_W*H/W);coverageCanvas=document.createElement('canvas');coverageCanvas.width=SAMPLE_W;coverageCanvas.height=SAMPLE_H;coverageCtx=coverageCanvas.getContext('2d',{willReadFrequently:true});maskIndices.clear();masks.forEach((im,n)=>{coverageCtx.clearRect(0,0,SAMPLE_W,SAMPLE_H);coverageCtx.drawImage(im,0,0,SAMPLE_W,SAMPLE_H);const d=coverageCtx.getImageData(0,0,SAMPLE_W,SAMPLE_H).data,idx=[];for(let i=0,p=0;i<d.length;i+=4,p++)if(d[i+3]>20)idx.push(p);maskIndices.set(n,idx);coverageCache.set(n,0);});}
+function paintSample(){coverageCtx.clearRect(0,0,SAMPLE_W,SAMPLE_H);coverageCtx.drawImage(paint,0,0,SAMPLE_W,SAMPLE_H);return coverageCtx.getImageData(0,0,SAMPLE_W,SAMPLE_H).data;}
+function coverageFor(n,pd){const idx=maskIndices.get(n);if(!idx||!idx.length)return 0;pd=pd||paintSample();let c=0;for(let i=0;i<idx.length;i++)if(pd[idx[i]*4+3]>18)c++;return c/idx.length;}
+function refreshAllCompletion(){const pd=paintSample();PALETTE.forEach((_,n)=>setDone(n,coverageFor(n,pd)));setStatus();}
+function scheduleCompletion(n){const run=()=>{const ratio=coverageFor(n);const done=setDone(n,ratio);if(done&&selected===n){const next=nextIncomplete(n);if(next!==null){selected=next;markSelected();setColor(PALETTE[next],`Palette ${next}`);status.textContent=`Number ${n} complete ✓ — it is now disabled. Number ${next} is highlighted.`;return;}}if(selected===n)setStatus();};if('requestIdleCallback'in window)requestIdleCallback(run,{timeout:160});else setTimeout(run,0);}
+function setStatus(){const pct=Math.round((coverageCache.get(selected)||0)*100);if(mode==='gesture'||mode==='pan')status.textContent=`Moving canvas — no paint is being added. Number ${selected} remains highlighted.`;else if(tool==='move')status.textContent=`Move mode — drag with one finger. Pinch with two fingers to zoom. Number ${selected}: ${pct}% covered.`;else if(tool==='erase')status.textContent=`Erase mode — all areas for number ${selected} are hatched. Two fingers move/zoom. ${pct}% covered.`;else status.textContent=`Paint mode — all areas for number ${selected} are hatched. One finger paints; two fingers move/zoom. ${pct}% covered.`;}
+
+function snapshot(){const s=document.createElement('canvas');s.width=W;s.height=H;s.getContext('2d').drawImage(paint,0,0);return s;}
+function restore(s){ctx.clearRect(0,0,W,H);ctx.drawImage(s,0,0);}
+function save(){const s=snapshot();history.push(s);if(history.length>MAX_HISTORY)history.shift();future=[];return s;}
+function configureBrush(){ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=+size.value;if(tool==='erase'){ctx.globalCompositeOperation='destination-out';ctx.globalAlpha=1;ctx.strokeStyle='#000';ctx.fillStyle='#000';}else{ctx.globalCompositeOperation='source-over';ctx.globalAlpha=+opacity.value/100;ctx.strokeStyle=currentColor;ctx.fillStyle=currentColor;}}
+function drawDot(p){ctx.save();configureBrush();ctx.beginPath();ctx.arc(p.x,p.y,Math.max(1,ctx.lineWidth/2),0,Math.PI*2);ctx.fill();ctx.restore();}
+function drawTo(p){if(!stroke?.last){stroke.last={...p};drawDot(p);return;}const q=stroke.last;if(Math.hypot(p.x-q.x,p.y-q.y)<.15)return;ctx.save();configureBrush();ctx.beginPath();ctx.moveTo(q.x,q.y);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.restore();stroke.last={...p};}
+function samples(e){if(typeof e.getCoalescedEvents==='function'){const a=e.getCoalescedEvents();if(a&&a.length)return a;}return[e];}
+
+function applyTransform(){shell.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;}
+function clampPan(){const r=viewport.getBoundingClientRect();tx=clamp(tx,Math.min(0,r.width-r.width*scale),0);ty=clamp(ty,Math.min(0,r.height-r.height*scale),0);}
+function setZoom(next,cx,cy){const r=viewport.getBoundingClientRect(),ax=(cx??r.left+r.width/2)-r.left,ay=(cy??r.top+r.height/2)-r.top,before=scale;scale=clamp(next,MIN_SCALE,MAX_SCALE);tx=ax-(ax-tx)*(scale/before);ty=ay-(ay-ty)*(scale/before);clampPan();applyTransform();}
+function fitViewport(){const mobile=innerWidth<=900,aw=Math.max(260,stage.clientWidth-6),ah=mobile?Math.max(360,Math.min(innerHeight*.68,720)):Math.max(380,innerHeight-document.querySelector('header').getBoundingClientRect().height-26),aspect=W/H;let vw=Math.min(aw,980),vh=vw/aspect;if(vh>ah){vh=ah;vw=vh*aspect;}viewport.style.width=vw+'px';viewport.style.height=vh+'px';clampPan();applyTransform();}
+function syncToolButtons(){const groups={paint:[$('toolPaint'),$('mPaint')],erase:[$('toolErase'),$('mErase')],move:[$('toolMove'),$('mMove')]};Object.entries(groups).forEach(([name,buttons])=>buttons.forEach(b=>b&&b.classList.toggle('active',name===tool)));}
+function setTool(t){tool=t;syncToolButtons();paint.style.cursor=t==='move'?'grab':'crosshair';setStatus();}
+function beginGesture(){const p=[...active.values()].slice(0,2);if(p.length<2)return;mode='gesture';gesture={dist:distance(p),mid:midpoint(p),scale,tx,ty};panState=null;paint.style.cursor='grabbing';setStatus();}
+function cancelStrokeForNavigation(){if(mode!=='draw'||!strokeStart)return;restore(strokeStart);if(history[history.length-1]===strokeStart)history.pop();stroke=null;strokeStart=null;future=[];}
+
+paint.addEventListener('pointerdown',e=>{
+  e.preventDefault();try{paint.setPointerCapture(e.pointerId);}catch(_){}active.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(tool==='move'){
+    if(active.size>=2){beginGesture();return;}mode='pan';panState={x:e.clientX,y:e.clientY,tx,ty};paint.style.cursor='grabbing';setStatus();return;
+  }
+  if(active.size===1){mode='draw';strokeStart=save();stroke={last:null,number:selected};drawTo(pos(e));return;}
+  if(active.size===2){cancelStrokeForNavigation();beginGesture();return;}
+});
+paint.addEventListener('pointermove',e=>{
+  if(!active.has(e.pointerId))return;active.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(mode==='gesture'&&active.size>=2){const p=[...active.values()].slice(0,2),nd=distance(p),nm=midpoint(p),newScale=clamp(gesture.scale*(nd/Math.max(1,gesture.dist)),MIN_SCALE,MAX_SCALE),factor=newScale/gesture.scale,r=viewport.getBoundingClientRect();scale=newScale;tx=(nm.x-r.left)-((gesture.mid.x-r.left)-gesture.tx)*factor;ty=(nm.y-r.top)-((gesture.mid.y-r.top)-gesture.ty)*factor;clampPan();applyTransform();return;}
+  if(mode==='pan'&&active.size===1){tx=panState.tx+(e.clientX-panState.x);ty=panState.ty+(e.clientY-panState.y);clampPan();applyTransform();return;}
+  if(mode==='draw'&&active.size===1&&stroke){for(const ev of samples(e))drawTo(pos(ev));}
+});
+function pointerEnd(e){
+  const finished=mode==='draw'&&stroke?stroke.number:undefined;active.delete(e.pointerId);try{paint.releasePointerCapture(e.pointerId);}catch(_){}
+  if(mode==='gesture'&&active.size===1){const q=[...active.values()][0];mode='pan';panState={x:q.x,y:q.y,tx,ty};gesture=null;setStatus();return;}
+  if(active.size===0){mode=null;panState=null;gesture=null;stroke=null;strokeStart=null;paint.style.cursor=tool==='move'?'grab':'crosshair';if(finished!==undefined)scheduleCompletion(finished);else setStatus();}
+}
+paint.addEventListener('pointerup',pointerEnd);paint.addEventListener('pointercancel',pointerEnd);
+viewport.addEventListener('wheel',e=>{if(tool!=='move')return;e.preventDefault();setZoom(scale*(e.deltaY<0?1.12:.89),e.clientX,e.clientY);},{passive:false});
+
+$('toolPaint').addEventListener('click',()=>setTool('paint'));$('toolErase').addEventListener('click',()=>setTool('erase'));$('toolMove').addEventListener('click',()=>setTool('move'));$('mPaint').addEventListener('click',()=>setTool('paint'));$('mErase').addEventListener('click',()=>setTool('erase'));$('mMove').addEventListener('click',()=>setTool('move'));
+$('zoomIn').addEventListener('click',()=>setZoom(scale*1.35));$('zoomOut').addEventListener('click',()=>setZoom(scale/1.35));$('zoomReset').addEventListener('click',()=>{scale=1;tx=ty=0;applyTransform();});
+$('undo').addEventListener('click',()=>{if(!history.length)return;future.push(snapshot());restore(history.pop());refreshAllCompletion();});$('redo').addEventListener('click',()=>{if(!future.length)return;history.push(snapshot());restore(future.pop());refreshAllCompletion();});$('clear').addEventListener('click',()=>{save();ctx.clearRect(0,0,W,H);paletteEls.forEach((b,n)=>{b.disabled=false;b.classList.remove('done');const pct=b.querySelector('.pct');if(pct)pct.textContent='0%';coverageCache.set(n,0);});setStatus();});
+size.addEventListener('input',()=>sizeVal.textContent=size.value);opacity.addEventListener('input',()=>opacityVal.textContent=opacity.value+'%');$('customColor').addEventListener('input',e=>setColor(e.target.value,'Custom color'));$('hexColor').addEventListener('change',e=>{if(!setColor(e.target.value,'Custom color'))e.target.value=currentColor;});$('mutedness').addEventListener('input',renderTones);$('toneShift').addEventListener('input',renderTones);
+
+let refScale=1,refTx=0,refTy=0,refActive=new Map(),refGesture=null;const refModal=$('refModal'),refPanel=$('refPanel'),refShell=$('refShell');function refApply(){refShell.style.transform=`translate(${refTx}px,${refTy}px) scale(${refScale})`;}function openRef(){refModal.classList.add('open');refScale=1;refTx=refTy=0;refApply();}function closeRef(){refModal.classList.remove('open');refActive.clear();refGesture=null;}function refZoom(f){refScale=clamp(refScale*f,1,8);refApply();}
+$('refBtn').addEventListener('click',openRef);$('referenceThumb').addEventListener('click',openRef);$('refClose').addEventListener('click',closeRef);$('refIn').addEventListener('click',()=>refZoom(1.5));$('refOut').addEventListener('click',()=>refZoom(1/1.5));$('refReset').addEventListener('click',()=>{refScale=1;refTx=refTy=0;refApply();});refModal.addEventListener('click',e=>{if(e.target===refModal)closeRef();});refPanel.addEventListener('wheel',e=>{e.preventDefault();refZoom(e.deltaY<0?1.12:.89);},{passive:false});refPanel.addEventListener('pointerdown',e=>{e.preventDefault();try{refPanel.setPointerCapture(e.pointerId);}catch(_){}refActive.set(e.pointerId,{x:e.clientX,y:e.clientY});if(refActive.size===2){const p=[...refActive.values()].slice(0,2);refGesture={dist:distance(p),mid:midpoint(p),scale:refScale,tx:refTx,ty:refTy};}else refGesture={one:{x:e.clientX,y:e.clientY},scale:refScale,tx:refTx,ty:refTy};});refPanel.addEventListener('pointermove',e=>{if(!refActive.has(e.pointerId))return;refActive.set(e.pointerId,{x:e.clientX,y:e.clientY});const p=[...refActive.values()].slice(0,2);if(p.length===2&&refGesture?.dist){const nd=distance(p);refScale=clamp(refGesture.scale*(nd/Math.max(1,refGesture.dist)),1,8);refApply();}else if(p.length===1&&refGesture?.one&&refScale>1){refTx=refGesture.tx+(e.clientX-refGesture.one.x);refTy=refGesture.ty+(e.clientY-refGesture.one.y);refApply();}});function refEnd(e){refActive.delete(e.pointerId);refGesture=null;}refPanel.addEventListener('pointerup',refEnd);refPanel.addEventListener('pointercancel',refEnd);
+
+$('exportBtn').addEventListener('click',()=>{const out=document.createElement('canvas');out.width=W;out.height=H;const o=out.getContext('2d');o.fillStyle='#fff';o.fillRect(0,0,W,H);o.drawImage(guideCanvas,0,0);o.globalCompositeOperation='multiply';o.drawImage(paint,0,0);o.globalCompositeOperation='source-over';const a=document.createElement('a');a.download='city-colored.png';a.href=out.toDataURL('image/png');a.click();});
+
+async function init(){
+  buildPalette();diag.textContent='Loading source assets…';
+  const res=await fetch('./index.html',{cache:'no-store'});if(!res.ok)throw new Error(`Could not load source artwork (${res.status})`);const source=await res.text();const doc=new DOMParser().parseFromString(source,'text/html');
+  const guideSrc=doc.querySelector('#guide')?.getAttribute('src'),refSrc=doc.querySelector('#reference')?.getAttribute('src');if(!guideSrc)throw new Error('Guide asset missing from index.html');referenceSrc=refSrc||guideSrc;
+  const maskSrcs=PALETTE.map((_,n)=>doc.querySelector('#mask'+n)?.getAttribute('src'));if(maskSrcs.some(x=>!x))throw new Error('One or more numbered masks are missing.');
+  [guideImg,...masks]=await Promise.all([loadImage(guideSrc),...maskSrcs.map(loadImage)]);W=guideImg.naturalWidth||1000;H=guideImg.naturalHeight||1417;[guideCanvas,highlight,paint].forEach(c=>{c.width=W;c.height=H;});gctx.drawImage(guideImg,0,0,W,H);buildMaskSamples();
+  $('referenceThumb').src=referenceSrc;$('refLarge').src=referenceSrc;fitViewport();selectNumber(6);setTool('paint');sizeVal.textContent=size.value;opacityVal.textContent=opacity.value+'%';diag.textContent='Ready — numbered-area grid + safe navigation active.';setStatus();
+}
+addEventListener('resize',fitViewport);
+init().catch(err=>{diag.textContent='Error: '+err.message;status.textContent='The demo could not load.';console.error(err);});
+})();
+</script>
+</body>
+</html>
