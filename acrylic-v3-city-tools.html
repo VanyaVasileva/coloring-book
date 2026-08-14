@@ -10,7 +10,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
 </style>
 </head>
 <body>
-<iframe id="cityBase" src="./acrylic-v3-city-tools-base.html?v=reference-bristle-1" title="Acrylic v3 City Tools"></iframe>
+<iframe id="cityBase" src="./acrylic-v3-city-tools-base.html?v=painted-reference-form-2" title="Acrylic v3 City Tools"></iframe>
 <script>
 (() => {
   'use strict';
@@ -29,10 +29,10 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
     return x * x * (3 - 2 * x);
   };
   const angleDelta = (a, b) => {
-    let d = a - b;
-    while (d > Math.PI) d -= Math.PI * 2;
-    while (d < -Math.PI) d += Math.PI * 2;
-    return Math.abs(d);
+    let v = a - b;
+    while (v > Math.PI) v -= Math.PI * 2;
+    while (v < -Math.PI) v += Math.PI * 2;
+    return Math.abs(v);
   };
 
   function buildReferenceTip(d, source) {
@@ -65,24 +65,18 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
 
     const bodyW = maxX - minX + 1;
     const bodyH = maxY - minY + 1;
-    const outH = Math.max(18, Math.round(bodyH * 1.04));
-    const outW = Math.max(54, Math.round(outH * 4.85));
-    const padX = Math.max(2, Math.round(outW * 0.012));
-    const padY = Math.max(1, Math.round(outH * 0.025));
 
+    // The supplied reference is a long, thin loaded-brush mark: roughly 4.2:1,
+    // with a pointed tail, a fuller middle and a softer rounded leading end.
+    const outH = Math.max(16, Math.round(bodyH * 0.90));
+    const outW = Math.max(52, Math.round(outH * 4.25));
     const out = d.createElement('canvas');
     out.width = outW;
     out.height = outH;
     const o = out.getContext('2d', {willReadFrequently: true});
 
-    // Stretch only the painted part of the original Acrylic v3 tip. This keeps
-    // its existing pigment streaks while turning the dab into the long, thin
-    // bristle stroke from the supplied reference instead of a rounded blob.
-    o.drawImage(
-      source,
-      minX, minY, bodyW, bodyH,
-      padX, padY, outW - padX * 2, outH - padY * 2
-    );
+    // Stretch the real Acrylic v3 pigment texture into the reference proportions.
+    o.drawImage(source, minX, minY, bodyW, bodyH, 0, 0, outW, outH);
 
     let img;
     try {
@@ -99,27 +93,27 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
         if (!data[k + 3]) continue;
 
         const u = x / Math.max(1, outW - 1);
-        let profile;
-        if (u <= 0.52) {
-          const q = clamp(u / 0.52, 0, 1);
-          profile = Math.pow(Math.sin(q * Math.PI * 0.5), 0.55);
+
+        // Asymmetric silhouette copied from the visual reference:
+        // sharp taper on the left, broad middle, softer taper on the right.
+        let widthProfile;
+        if (u < 0.48) {
+          const q = clamp(u / 0.48, 0, 1);
+          widthProfile = Math.pow(Math.sin(q * Math.PI * 0.5), 0.78);
         } else {
-          const q = clamp((u - 0.52) / 0.48, 0, 1);
-          profile = Math.pow(Math.cos(q * Math.PI * 0.5), 0.42);
+          const q = clamp((u - 0.48) / 0.52, 0, 1);
+          widthProfile = Math.pow(Math.cos(q * Math.PI * 0.5), 0.34);
         }
 
-        // Slight hand-painted sweep through the centre line, but keep the
-        // silhouette controlled so straight strokes still read as a brush mark.
-        const centre = 0.5 + 0.018 * Math.sin((u - 0.08) * Math.PI * 2);
-        const half = Math.max(0.01, 0.47 * profile);
+        // Very slight sweep only; the painted mark itself keeps the reference form.
+        const centre = 0.5 + 0.012 * Math.sin((u - 0.10) * Math.PI * 1.55);
+        const half = Math.max(0.008, 0.475 * widthProfile);
         const edge = Math.abs(yn - centre) / half;
-        const mask = 1 - smoothstep(0.83, 1.02, edge);
+        const silhouette = 1 - smoothstep(0.87, 1.015, edge);
 
-        // The long tip overlaps more stamps than the old round dab. Reduce each
-        // stamp's load so the final stroke keeps Acrylic v3 translucency and the
-        // original internal bristle streaks instead of becoming a solid bar.
-        const load = 0.30 + 0.08 * profile;
-        data[k + 3] = Math.round(data[k + 3] * clamp(mask * load, 0, 1));
+        // Preserve the original pigment streaks while keeping the body readable.
+        const load = 0.82 + 0.16 * widthProfile;
+        data[k + 3] = Math.round(data[k + 3] * clamp(silhouette * load, 0, 1));
       }
     }
 
@@ -136,8 +130,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
 
     ctx.drawImage = function(source, ...args) {
       try {
-        // Acrylic v3 brush stamps are small offscreen canvases drawn with the
-        // 3-argument overload. Full-size undo/history canvases bypass this.
+        // Only replace live Acrylic v3 paint dabs. Undo/history canvases are full-size.
         const isCanvas = source && typeof source.width === 'number' && typeof source.height === 'number';
         const looksLikeTip = isCanvas && args.length === 2 && source.width >= 10 && source.height >= 10 && source.width <= 260 && source.height <= 260;
         if (looksLikeTip) {
@@ -157,29 +150,32 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
             stampState.set(source, state);
           }
 
-          // The original engine places its very first dab before it knows the
-          // stroke direction. Keep that first mark compact so an angled stroke
-          // does not begin with a long horizontal artefact.
+          // The engine draws one dab before it knows stroke direction. Keep that
+          // first touch small; the elongated reference form begins once direction exists.
           if (state.drawn === 0) {
             state.drawn = 1;
             state.lastX = px;
             state.lastY = py;
             state.lastAngle = angle;
-            const starterW = shaped.height * 0.92;
-            const starterH = shaped.height * 0.72;
+            const starterW = shaped.width * 0.20;
+            const starterH = shaped.height * 0.74;
             return nativeDrawImage(shaped, cx - starterW / 2, cy - starterH / 2, starterW, starterH);
           }
 
-          const step = shaped.height * 0.42;
-          if (state.drawn > 1 && Number.isFinite(px) && Number.isFinite(py) && Number.isFinite(state.lastX) && Number.isFinite(state.lastY)) {
-            const travelled = Math.hypot(px - state.lastX, py - state.lastY);
-            if (travelled < step) return;
-          }
+          const travelled = Number.isFinite(px) && Number.isFinite(py) && Number.isFinite(state.lastX) && Number.isFinite(state.lastY)
+            ? Math.hypot(px - state.lastX, py - state.lastY)
+            : shaped.width;
+          const turn = angleDelta(angle, state.lastAngle);
+
+          // This is the important part: do NOT stack a long stamp every few pixels.
+          // Let each actual painted impression keep the same long tapered form as
+          // the reference image, with only moderate overlap between impressions.
+          const normalStep = shaped.width * 0.46;
+          if (state.drawn > 1 && travelled < normalStep && turn < 0.26) return;
 
           let lengthScale = 1;
-          if (state.drawn > 1 && m) {
-            const turn = angleDelta(angle, state.lastAngle);
-            if (turn > 0.42) lengthScale = clamp(1 - (turn - 0.42) * 0.62, 0.58, 1);
+          if (turn >= 0.26) {
+            lengthScale = clamp(travelled / Math.max(1, shaped.width * 0.34), 0.34, 0.82);
           }
 
           state.drawn++;
@@ -196,7 +192,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
     };
 
     patchedContexts.add(ctx);
-    d.documentElement.dataset.naturalEdgeLive = '4';
+    d.documentElement.dataset.referencePaintForm = '2';
     return true;
   }
 
@@ -210,7 +206,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
       return false;
     }
     if (!d || !d.documentElement) return false;
-    if (d.documentElement.dataset.naturalEdgeLive === '4') return true;
+    if (d.documentElement.dataset.referencePaintForm === '2') return true;
 
     const paint = d.getElementById('paint');
     if (!paint || !paint.width || !paint.height) return false;
@@ -241,6 +237,6 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
   startAttachLoop();
 })();
 </script>
-<!-- reference bristle shape: long tapered live stamp, 2026-08-15 -->
+<!-- painted brush form only; cursor remains independent -->
 </body>
 </html>
