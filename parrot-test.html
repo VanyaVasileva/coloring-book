@@ -21,7 +21,7 @@ main{position:relative;min-height:calc(100dvh - 64px)}
 .drawerHead{position:sticky;top:0;background:#fbfaf7fa;z-index:2;padding:12px 0 8px;border-bottom:1px solid #e7e0d5;display:flex;align-items:center;justify-content:space-between}.drawerHead strong,.label{font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}.close{padding:5px 9px}.label{margin:14px 0 7px;color:#676158}
 .tools{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}.tools button{padding:9px 3px;font-size:11px}.tools span{display:block;font-size:17px;margin-bottom:3px}
 .row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:#706a62}.row input[type=range]{flex:1}.row button{padding:7px 9px;font-size:11px}
-.streamlineRow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px}.streamlineRow span{font-size:11px;color:#706a62}.streamlineBtn{min-width:108px;padding:8px 10px;font-size:11px}.streamlineBtn.active{background:#2e5144;color:#fff;border-color:#2e5144}
+.streamlineRow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px}.streamlineRow span{font-size:11px;color:#706a62}.streamlineBtn,.brushTipBtn{min-width:108px;padding:8px 10px;font-size:11px}.streamlineBtn.active{background:#2e5144;color:#fff;border-color:#2e5144}.brushTipBtn.active{background:#7a5136;color:#fff;border-color:#7a5136}
 .hint{margin-top:8px;font-size:11px;line-height:1.4;color:#706a62}
 input[type=range]{width:100%}.actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}.actions .wide{grid-column:1/-1}
 .status{font-size:12px;line-height:1.45;background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px;margin-top:10px;min-height:54px}
@@ -40,11 +40,13 @@ input[type=range]{width:100%}.actions{display:grid;grid-template-columns:1fr 1fr
     <div class="drawerHead"><strong>Tools</strong><button id="closeTools" class="close">×</button></div>
     <div class="label">Tool</div>
     <div class="tools"><button id="toolPaint" class="active"><span>🖌️</span>Paint</button><button id="toolFill"><span>🪣</span>Fill</button><button id="toolErase"><span>🧼</span>Erase</button><button id="toolMove"><span>✋</span>Move</button></div>
-    <div class="hint">Paint sits above the sketch now, so you can deliberately color over outlines and numbers. Two-finger drag/pinch navigates. Two-finger quick tap = Undo.</div>
+    <div class="hint">Paint sits above the sketch. Two-finger drag/pinch navigates. Two-finger quick tap = Undo.</div>
     <div class="label">Sketch visibility</div>
     <div class="row"><input id="sketchOpacity" type="range" min="0" max="100" value="100"><button id="sketchToggle">Hide</button></div><div class="row"><span>Sketch + number guide</span><span id="sketchVal">100%</span></div>
     <div class="label">Brush control</div>
     <div class="streamlineRow"><span>Reduce finger / Pencil wobble</span><button id="streamline" class="streamlineBtn active" type="button">Streamline On</button></div>
+    <div class="streamlineRow"><span>Brush tip shape</span><button id="brushTip" class="brushTipBtn active" type="button">Acrylic Tip</button></div>
+    <div class="hint">Acrylic Tip uses a flat chisel-shaped opaque stamp instead of a round marker tip.</div>
     <div class="label">Brush size</div><div class="row"><span>Size</span><span id="sizeVal">24</span></div><input id="size" type="range" min="4" max="80" value="24">
     <div class="label">Opacity</div><div class="row"><span>Paint</span><span id="opacityVal">100%</span></div><input id="opacity" type="range" min="20" max="100" value="100">
     <div class="label">Actions</div><div class="actions"><button id="undo">Undo</button><button id="redo">Redo</button><button id="clear" class="wide">Clear All</button></div>
@@ -68,24 +70,15 @@ const ctx=paint.getContext('2d',{alpha:true,desynchronized:true}),hctx=highlight
 [paint,highlight,sketch].forEach(c=>{c.width=W;c.height=H});
 const P=s=>new Path2D(s);
 const regions={
-  1:[
-    P('M225 92 C315 56 414 82 468 160 C516 230 525 338 520 458 L456 404 C421 354 378 315 323 286 C275 262 244 242 224 211 C207 184 202 145 209 119 C213 107 218 99 225 92 Z'),
-    P('M243 257 C280 234 338 249 397 305 C432 338 458 372 480 410 C412 389 343 367 289 336 C257 318 239 286 243 257 Z')
-  ],
-  2:[
-    P('M289 336 C352 372 419 391 480 410 L563 548 C577 571 560 594 536 590 C465 577 394 529 326 479 C304 462 289 444 280 422 C270 396 274 363 289 336 Z'),
-    P('M363 744 C383 783 393 836 389 900 C386 962 374 1017 351 1047 C337 1065 320 1058 319 1038 C318 974 321 912 324 850 C327 806 338 769 363 744 Z')
-  ],
+  1:[P('M225 92 C315 56 414 82 468 160 C516 230 525 338 520 458 L456 404 C421 354 378 315 323 286 C275 262 244 242 224 211 C207 184 202 145 209 119 C213 107 218 99 225 92 Z'),P('M243 257 C280 234 338 249 397 305 C432 338 458 372 480 410 C412 389 343 367 289 336 C257 318 239 286 243 257 Z')],
+  2:[P('M289 336 C352 372 419 391 480 410 L563 548 C577 571 560 594 536 590 C465 577 394 529 326 479 C304 462 289 444 280 422 C270 396 274 363 289 336 Z'),P('M363 744 C383 783 393 836 389 900 C386 962 374 1017 351 1047 C337 1065 320 1058 319 1038 C318 974 321 912 324 850 C327 806 338 769 363 744 Z')],
   3:[P('M324 479 C347 497 368 510 389 520 L389 790 C389 854 379 925 360 957 C349 974 336 967 336 947 C336 846 334 745 330 646 C327 584 324 529 324 479 Z')],
-  4:[
-    P('M149 102 C184 88 219 109 229 143 C238 176 223 213 191 229 C158 244 122 230 110 197 C98 165 114 117 149 102 Z'),
-    P('M107 177 C130 162 157 164 176 180 C171 203 151 216 126 213 C112 205 105 192 107 177 Z')
-  ],
+  4:[P('M149 102 C184 88 219 109 229 143 C238 176 223 213 191 229 C158 244 122 230 110 197 C98 165 114 117 149 102 Z'),P('M107 177 C130 162 157 164 176 180 C171 203 151 216 126 213 C112 205 105 192 107 177 Z')],
   5:[P('M83 140 C58 133 43 150 46 177 C50 207 70 231 101 246 C91 220 96 194 111 174 C105 155 96 144 83 140 Z')]
 };
 const labels={1:[[338,191],[330,306]],2:[[465,488],[350,995]],3:[[355,650]],4:[[169,151],[137,191]],5:[[78,183]]};
 const eye={x:166,y:126,r:7};
-let selected=1,color=COLORS[1],tool='paint',scale=1,tx=0,ty=0,sketchOpacity=100,sketchHidden=false,streamline=true;
+let selected=1,color=COLORS[1],tool='paint',scale=1,tx=0,ty=0,sketchOpacity=100,sketchHidden=false,streamline=true,brushTip='acrylic';
 let history=[],future=[],coverage=new Map(Object.keys(COLORS).map(n=>[+n,0]));
 let mouseDrawing=false,strokeStart=null,last=null,smooth=null,touchMode=null,touchStart=null,gesture=null,pan=null;
 const paletteEls={};
@@ -94,18 +87,18 @@ function norm(v){v=(v||'').trim();if(!v.startsWith('#'))v='#'+v;return /^#[0-9a-
 function isDark(hex){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return .299*r+.587*g+.114*b<130}
 function posXY(clientX,clientY){const r=paint.getBoundingClientRect();return{x:(clientX-r.left)*W/r.width,y:(clientY-r.top)*H/r.height}}
 function setPanel(name,open){const p=$(name+'Panel'),b=$('toggle'+name[0].toUpperCase()+name.slice(1));p.classList.toggle('closed',!open);b.classList.toggle('active',open)}
-$('toggleTools').onclick=()=>setPanel('tools',$('toolsPanel').classList.contains('closed'));$('toggleColors').onclick=()=>setPanel('colors',$('colorsPanel').classList.contains('closed'));$('closeTools').onclick=()=>setPanel('tools',false);$('closeColors').onclick=()=>setPanel('colors',false);
-if(innerWidth<=900){setPanel('tools',false);setPanel('colors',false)}
+$('toggleTools').onclick=()=>setPanel('tools',$('toolsPanel').classList.contains('closed'));$('toggleColors').onclick=()=>setPanel('colors',$('colorsPanel').classList.contains('closed'));$('closeTools').onclick=()=>setPanel('tools',false);$('closeColors').onclick=()=>setPanel('colors',false);if(innerWidth<=900){setPanel('tools',false);setPanel('colors',false)}
 function drawSketch(){sctx.clearRect(0,0,W,H);sctx.save();sctx.strokeStyle='#111';sctx.lineWidth=7;sctx.lineJoin='round';sctx.lineCap='round';Object.values(regions).flat().forEach(p=>sctx.stroke(p));sctx.fillStyle='#111';sctx.beginPath();sctx.arc(eye.x,eye.y,eye.r,0,Math.PI*2);sctx.fill();sctx.font='32px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';sctx.textAlign='center';sctx.textBaseline='middle';for(const [n,pts] of Object.entries(labels))pts.forEach(([x,y])=>sctx.fillText(n,x,y));sctx.restore()}
 function applySketch(){const off=sketchHidden||sketchOpacity===0;sketch.style.opacity=off?'0':String(sketchOpacity/100);highlight.style.opacity=off?'0':'1';$('sketchVal').textContent=(off?0:sketchOpacity)+'%';$('sketchToggle').textContent=off?'Show':'Hide';$('sketchQuick').textContent=off?'Sketch hidden':`Sketch ${sketchOpacity}%`}
 $('sketchOpacity').oninput=e=>{sketchOpacity=+e.target.value;sketchHidden=false;applySketch()};$('sketchToggle').onclick=()=>{sketchHidden=!sketchHidden;applySketch()};$('sketchQuick').onclick=()=>{sketchHidden=!sketchHidden;applySketch()};
 $('streamline').onclick=()=>{streamline=!streamline;$('streamline').classList.toggle('active',streamline);$('streamline').textContent=streamline?'Streamline On':'Streamline Off';setStatus(streamline?'Streamline on — small hand wobble is filtered.':'Streamline off — brush follows your hand directly.')};
+$('brushTip').onclick=()=>{brushTip=brushTip==='acrylic'?'round':'acrylic';const acrylic=brushTip==='acrylic';$('brushTip').classList.toggle('active',acrylic);$('brushTip').textContent=acrylic?'Acrylic Tip':'Round Tip';setStatus(acrylic?'Acrylic Tip on — flat chisel brush shape.':'Round Tip on — standard round brush shape.')};
 function drawHighlight(){hctx.clearRect(0,0,W,H);hctx.save();for(const p of regions[selected]){hctx.save();hctx.fillStyle=color+'24';hctx.fill(p);hctx.clip(p);hctx.strokeStyle='#3337';hctx.lineWidth=1.5;for(let x=-H;x<W+H;x+=22){hctx.beginPath();hctx.moveTo(x,0);hctx.lineTo(x+H,H);hctx.stroke()}hctx.restore()}hctx.restore();applySketch()}
 function buildPalette(){const wrap=$('palette');for(const n of [1,2,3,4,5]){const b=document.createElement('button');b.className='swatch'+(isDark(COLORS[n])?' dark':'');b.style.background=COLORS[n];b.innerHTML=`<span class="num">${n}</span><span class="meta"><b>${COLORS[n]}</b><br><span class="pct">0%</span></span>`;b.onclick=()=>select(n);wrap.appendChild(b);paletteEls[n]=b}}
 function select(n){if(paletteEls[n].disabled)return;selected=n;color=COLORS[n];Object.entries(paletteEls).forEach(([k,b])=>b.classList.toggle('selected',+k===n));$('mNumber').textContent='#'+n;$('customColor').value=color;$('hexColor').value=color;drawHighlight();setStatus()}
 function setDone(n,r){coverage.set(n,r);const b=paletteEls[n],done=r>=DONE;b.disabled=done;b.classList.toggle('done',done);b.querySelector('.pct').textContent=done?'Done ✓':Math.round(r*100)+'%';return done}
 function nextIncomplete(n){for(let k=1;k<=5;k++){const j=((n-1+k)%5)+1;if(!paletteEls[j].disabled)return j}return null}
-function setStatus(msg){if(msg){$('status').textContent=msg;return}const p=Math.round((coverage.get(selected)||0)*100);$('status').textContent=tool==='move'?`Move mode — one finger pans; two fingers pinch. Two-finger tap = Undo. Number ${selected}: ${p}%.`:tool==='fill'?`Fill mode — tap one highlighted area for number ${selected}. Two-finger tap = Undo.`:tool==='erase'?`Erase mode — one finger erases; two fingers navigate. Two-finger tap = Undo. Number ${selected}: ${p}%.`:`Paint mode — paint can cover the black sketch lines. Streamline ${streamline?'on':'off'}. Two-finger tap = Undo. Number ${selected}: ${p}%.`}
+function setStatus(msg){if(msg){$('status').textContent=msg;return}const p=Math.round((coverage.get(selected)||0)*100);$('status').textContent=tool==='move'?`Move mode — one finger pans; two fingers pinch. Two-finger tap = Undo. Number ${selected}: ${p}%.`:tool==='fill'?`Fill mode — tap one highlighted area for number ${selected}. Two-finger tap = Undo.`:tool==='erase'?`Erase mode — one finger erases; two fingers navigate. Number ${selected}: ${p}%.`:`Paint mode — ${brushTip==='acrylic'?'Acrylic flat tip':'Round tip'}, Streamline ${streamline?'on':'off'}. Two-finger tap = Undo. Number ${selected}: ${p}%.`}
 function snapshot(){const c=document.createElement('canvas');c.width=W;c.height=H;c.getContext('2d').drawImage(paint,0,0);return c}
 function save(){const s=snapshot();history.push(s);if(history.length>MAX_HISTORY)history.shift();future=[];return s}
 function restore(s){ctx.clearRect(0,0,W,H);ctx.drawImage(s,0,0)}
@@ -113,8 +106,9 @@ function undoAction(){if(!history.length){setStatus('Nothing to undo yet.');retu
 function redoAction(){if(!future.length){setStatus('Nothing to redo yet.');return false}history.push(snapshot());restore(future.pop());refreshAll();setStatus('Redo');return true}
 function brush(){ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=+$('size').value;if(tool==='erase'){ctx.globalCompositeOperation='destination-out';ctx.globalAlpha=1;ctx.strokeStyle='#000';ctx.fillStyle='#000'}else{ctx.globalCompositeOperation='source-over';ctx.globalAlpha=+$('opacity').value/100;ctx.strokeStyle=color;ctx.fillStyle=color}}
 function filteredPoint(p){if(!streamline)return p;if(!smooth){smooth={x:p.x,y:p.y};return{x:p.x,y:p.y}}const dx=p.x-smooth.x,dy=p.y-smooth.y,dist=Math.hypot(dx,dy),follow=clamp(.34+dist/150,.34,.78);smooth.x+=dx*follow;smooth.y+=dy*follow;return{x:smooth.x,y:smooth.y}}
-function dot(p){ctx.save();brush();ctx.beginPath();ctx.arc(p.x,p.y,ctx.lineWidth/2,0,Math.PI*2);ctx.fill();ctx.restore()}
-function lineTo(raw){const p=filteredPoint(raw);if(!last){last=p;dot(p);return}ctx.save();brush();ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.restore();last=p}
+function roundDot(p){ctx.save();brush();ctx.beginPath();ctx.arc(p.x,p.y,ctx.lineWidth/2,0,Math.PI*2);ctx.fill();ctx.restore()}
+function acrylicStamp(p,angle){ctx.save();brush();const w=ctx.lineWidth,h=Math.max(2,w*.38);ctx.translate(p.x,p.y);ctx.rotate(angle);ctx.beginPath();if(ctx.roundRect)ctx.roundRect(-w/2,-h/2,w,h,Math.max(1,h*.18));else ctx.rect(-w/2,-h/2,w,h);ctx.fill();ctx.restore()}
+function lineTo(raw){const p=filteredPoint(raw);if(!last){last=p;if(brushTip==='acrylic')acrylicStamp(p,-.35);else roundDot(p);return}const dx=p.x-last.x,dy=p.y-last.y,dist=Math.hypot(dx,dy);if(dist<.1)return;if(brushTip==='acrylic'&&tool!=='erase'){const angle=Math.atan2(dy,dx)+Math.PI/2,step=Math.max(1.2,+$('size').value*.11),pieces=Math.max(1,Math.ceil(dist/step));for(let i=1;i<=pieces;i++){const t=i/pieces;acrylicStamp({x:last.x+dx*t,y:last.y+dy*t},angle)}}else{ctx.save();brush();ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.restore()}last=p}
 function resetStrokePath(){last=null;smooth=null}
 function startStroke(p){strokeStart=save();resetStrokePath();lineTo(p)}
 function cancelStroke(){if(strokeStart){restore(strokeStart);if(history[history.length-1]===strokeStart)history.pop();strokeStart=null;resetStrokePath()}}
@@ -136,7 +130,7 @@ for(const [id,t] of [['toolPaint','paint'],['toolFill','fill'],['toolErase','era
 $('size').oninput=e=>$('sizeVal').textContent=e.target.value;$('opacity').oninput=e=>$('opacityVal').textContent=e.target.value+'%';$('customColor').oninput=e=>{color=e.target.value.toUpperCase();$('hexColor').value=color;drawHighlight()};$('hexColor').onchange=e=>{const h=norm(e.target.value);if(h){color=h;$('customColor').value=h;drawHighlight()}else e.target.value=color};
 $('undo').onclick=undoAction;$('redo').onclick=redoAction;$('clear').onclick=()=>{save();ctx.clearRect(0,0,W,H);for(const n of [1,2,3,4,5]){paletteEls[n].disabled=false;paletteEls[n].classList.remove('done');paletteEls[n].querySelector('.pct').textContent='0%';coverage.set(n,0)}setStatus()};
 paint.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')return;e.preventDefault();try{paint.setPointerCapture(e.pointerId)}catch(_){}const p=posXY(e.clientX,e.clientY);if(tool==='move'){pan={x:e.clientX,y:e.clientY,tx,ty};return}if(tool==='fill'){fillAt(p);return}mouseDrawing=true;startStroke(p)});
-paint.addEventListener('pointermove',e=>{if(e.pointerType==='touch')return;if(tool==='move'&&pan){tx=pan.tx+(e.clientX-pan.x);ty=pan.ty+(e.clientY-pan.y);clampPan();applyTransform();return}if(mouseDrawing){const events=typeof e.getCoalescedEvents==='function'&&e.getCoalescedEvents().length?e.getCoalescedEvents():[e];for(const ev of events)lineTo(posXY(ev.clientX,ev.clientY))}});
+paint.addEventListener('pointermove',e=>{if(e.pointerType==='touch')return;if(tool==='move'&&pan){tx=pan.tx+(e.clientX-pan.x);ty=pan.ty+(e.clientY-pan.y);clampPan();applyTransform();return}if(mouseDrawing){const list=typeof e.getCoalescedEvents==='function'?e.getCoalescedEvents():[];const events=list&&list.length?list:[e];for(const ev of events)lineTo(posXY(ev.clientX,ev.clientY))}});
 function pointerEnd(e){if(e.pointerType==='touch')return;if(mouseDrawing){mouseDrawing=false;strokeStart=null;resetStrokePath();refreshCompletion(selected)}pan=null;try{paint.releasePointerCapture(e.pointerId)}catch(_){}}
 paint.addEventListener('pointerup',pointerEnd);paint.addEventListener('pointercancel',pointerEnd);
 function touches(ev){return [...ev.touches].map(t=>({id:t.identifier,x:t.clientX,y:t.clientY}))}
@@ -146,7 +140,7 @@ paint.addEventListener('touchmove',e=>{e.preventDefault();const ts=touches(e);if
 paint.addEventListener('touchend',e=>{e.preventDefault();const ts=touches(e);if(touchMode==='gesture'&&gesture){if(ts.length>0){gesture.tapCandidate=!gesture.moved&&(performance.now()-gesture.startedAt)<320;touchMode='gestureHold';return}const tap=!gesture.moved&&(performance.now()-gesture.startedAt)<320;touchMode=null;touchStart=null;pan=null;const doUndo=tap;gesture=null;if(doUndo)undoAction();return}if(touchMode==='gestureHold'){if(ts.length>0)return;const doUndo=!!gesture?.tapCandidate;touchMode=null;touchStart=null;pan=null;gesture=null;if(doUndo)undoAction();return}if(ts.length===0){if(touchMode==='fillPending'&&touchStart&&!touchStart.moved)fillAt(touchStart.p);else if(touchMode==='drawPending'&&touchStart){startStroke(touchStart.p);strokeStart=null;resetStrokePath();refreshCompletion(touchStart.number)}else if(touchMode==='draw'){strokeStart=null;resetStrokePath();refreshCompletion(selected)}touchMode=null;touchStart=null;gesture=null;pan=null;}},{passive:false});
 paint.addEventListener('touchcancel',e=>{e.preventDefault();cancelStroke();touchMode=null;touchStart=null;gesture=null;pan=null},{passive:false});
 viewport.addEventListener('wheel',e=>{if(tool!=='move')return;e.preventDefault();zoom(scale*(e.deltaY<0?1.12:.89),e.clientX,e.clientY)},{passive:false});
-function init(){buildPalette();drawSketch();buildSamples();select(1);setTool('paint');applySketch();fit();$('status').textContent='Clean vector test ready — paint can cover outlines, Streamline is on, and two-finger tap undoes.'}
+function init(){buildPalette();drawSketch();buildSamples();select(1);setTool('paint');applySketch();fit();$('status').textContent='Acrylic Tip test ready — flat chisel brush + Streamline + two-finger Undo.'}
 addEventListener('resize',()=>{fit();if(innerWidth<=900){setPanel('tools',false);setPanel('colors',false)}});init();
 })();
 </script>
