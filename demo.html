@@ -153,5 +153,27 @@ async function init(){buildPalette();diag.textContent='Loading source assets…'
 addEventListener('resize',()=>{fitViewport();if(innerWidth<=900){setPanel('tools',false);setPanel('colors',false);}});init().catch(err=>{diag.textContent='Error: '+err.message;status.textContent='The demo could not load.';console.error(err);});
 })();
 </script>
+<script>
+(() => {
+'use strict';
+const $=id=>document.getElementById(id),paint=$('paint'),size=$('size'),toolsPanel=$('toolsPanel');
+if(!paint||!size||!toolsPanel||$('brushCursor'))return;
+const style=document.createElement('style');
+style.textContent=`#brushCursor{position:fixed;left:0;top:0;z-index:120;display:none;width:28px;height:28px;border-radius:50%;pointer-events:none;border:1.5px solid rgba(255,255,255,.98);box-shadow:0 0 0 1px rgba(20,20,20,.88),0 1px 5px rgba(0,0,0,.22);transform:translate(-50%,-50%);will-change:left,top,width,height}#brushCursor::after{content:'';position:absolute;left:50%;top:50%;width:3px;height:3px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px rgba(20,20,20,.8);transform:translate(-50%,-50%)}.brushCursorSetting{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:9px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;font-size:11px;color:var(--muted)}.brushCursorSetting strong{color:var(--ink);font-size:11px}.brushCursorSetting input{width:19px;height:19px;flex:none;accent-color:var(--ink)}.brushCursorHint{font-size:10px;line-height:1.35;color:var(--muted);margin-top:5px}`;
+document.head.appendChild(style);
+const cursor=document.createElement('div');cursor.id='brushCursor';cursor.setAttribute('aria-hidden','true');document.body.appendChild(cursor);
+const setting=document.createElement('label');setting.className='brushCursorSetting';setting.innerHTML='<span><strong>Brush cursor</strong><br>Show brush-size outline</span><input id="brushCursorToggle" type="checkbox">';
+const hint=document.createElement('div');hint.className='brushCursorHint';hint.textContent='Shows the current Paint or Erase size under the pointer, similar to a Procreate brush cursor.';
+const opacity=$('opacity');if(opacity&&opacity.parentNode===toolsPanel){opacity.insertAdjacentElement('afterend',setting);setting.insertAdjacentElement('afterend',hint);}else{const actions=[...toolsPanel.querySelectorAll('.label')].find(el=>el.textContent.trim()==='Actions');toolsPanel.insertBefore(setting,actions||null);toolsPanel.insertBefore(hint,actions||null);}
+const toggle=$('brushCursorToggle');let enabled=true,inside=false,lastPointer=null;try{const saved=localStorage.getItem('cityBrushCursor');enabled=saved===null?true:saved==='1';}catch(_){}toggle.checked=enabled;
+function currentTool(){if($('toolMove')?.classList.contains('active')||$('mMove')?.classList.contains('active'))return'move';if($('toolFill')?.classList.contains('active')||$('mFill')?.classList.contains('active'))return'fill';if($('toolErase')?.classList.contains('active')||$('mErase')?.classList.contains('active'))return'erase';return'paint';}
+function diameterPx(){const r=paint.getBoundingClientRect(),canvasWidth=paint.width||1000;return Math.max(5,(+size.value||28)*(r.width/canvasWidth));}
+function place(e){const tool=currentTool();if(!enabled||(tool!=='paint'&&tool!=='erase')){cursor.style.display='none';return;}const d=diameterPx();cursor.style.left=e.clientX+'px';cursor.style.top=e.clientY+'px';cursor.style.width=d+'px';cursor.style.height=d+'px';cursor.style.display='block';}
+function syncNativeCursor(){const tool=currentTool();if(enabled&&(tool==='paint'||tool==='erase'))paint.style.cursor='none';else if(tool==='move')paint.style.cursor='grab';else if(tool==='fill')paint.style.cursor='cell';else paint.style.cursor='crosshair';if(!enabled||tool==='move'||tool==='fill')cursor.style.display='none';else if(inside&&lastPointer)place(lastPointer);}
+toggle.addEventListener('change',()=>{enabled=toggle.checked;try{localStorage.setItem('cityBrushCursor',enabled?'1':'0');}catch(_){}syncNativeCursor();});
+paint.addEventListener('pointerenter',e=>{inside=true;lastPointer=e;place(e);});paint.addEventListener('pointermove',e=>{inside=true;lastPointer=e;place(e);});paint.addEventListener('pointerdown',e=>{inside=true;lastPointer=e;place(e);});paint.addEventListener('pointerup',e=>{lastPointer=e;if(e.pointerType==='touch'){inside=false;cursor.style.display='none';}else place(e);});paint.addEventListener('pointercancel',()=>{inside=false;cursor.style.display='none';});paint.addEventListener('pointerleave',()=>{inside=false;cursor.style.display='none';});size.addEventListener('input',()=>{if(inside&&lastPointer)place(lastPointer);});
+['toolPaint','toolFill','toolErase','toolMove','mPaint','mFill','mErase','mMove'].forEach(id=>$(id)?.addEventListener('click',()=>setTimeout(syncNativeCursor,0)));addEventListener('resize',()=>{if(inside&&lastPointer)place(lastPointer);});addEventListener('scroll',()=>{if(inside&&lastPointer)place(lastPointer);},true);syncNativeCursor();
+})();
+</script>
 </body>
 </html>
