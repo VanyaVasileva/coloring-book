@@ -10,7 +10,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
 </style>
 </head>
 <body>
-<iframe id="cityBase" src="./acrylic-v3-city-tools-base.html?v=live-filbert-3" title="Acrylic v3 City Tools"></iframe>
+<iframe id="cityBase" src="./acrylic-v3-city-tools-base.html?v=reference-bristle-1" title="Acrylic v3 City Tools"></iframe>
 <script>
 (() => {
   'use strict';
@@ -21,67 +21,105 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
   let pollTimer = null;
   const patchedContexts = new WeakSet();
   const tipCache = new WeakMap();
+  const stampState = new WeakMap();
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const smoothstep = (a, b, x) => {
     x = clamp((x - a) / Math.max(0.0001, b - a), 0, 1);
     return x * x * (3 - 2 * x);
   };
+  const angleDelta = (a, b) => {
+    let d = a - b;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return Math.abs(d);
+  };
 
-  function buildNaturalTip(d, source) {
+  function buildReferenceTip(d, source) {
     const cached = tipCache.get(source);
     if (cached) return cached;
 
-    const w = source.width | 0;
-    const h = source.height | 0;
-    if (w < 4 || h < 4) return source;
+    const sw = source.width | 0;
+    const sh = source.height | 0;
+    if (sw < 4 || sh < 4 || !source.getContext) return source;
+
+    let src;
+    try {
+      src = source.getContext('2d', {willReadFrequently: true}).getImageData(0, 0, sw, sh);
+    } catch (_) {
+      return source;
+    }
+
+    let minX = sw, minY = sh, maxX = -1, maxY = -1;
+    const sd = src.data;
+    for (let y = 0; y < sh; y++) {
+      for (let x = 0; x < sw; x++) {
+        if (sd[(y * sw + x) * 4 + 3] <= 3) continue;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    if (maxX < minX || maxY < minY) return source;
+
+    const bodyW = maxX - minX + 1;
+    const bodyH = maxY - minY + 1;
+    const outH = Math.max(18, Math.round(bodyH * 1.04));
+    const outW = Math.max(54, Math.round(outH * 4.85));
+    const padX = Math.max(2, Math.round(outW * 0.012));
+    const padY = Math.max(1, Math.round(outH * 0.025));
 
     const out = d.createElement('canvas');
-    out.width = w;
-    out.height = h;
+    out.width = outW;
+    out.height = outH;
     const o = out.getContext('2d', {willReadFrequently: true});
-    o.drawImage(source, 0, 0);
+
+    // Stretch only the painted part of the original Acrylic v3 tip. This keeps
+    // its existing pigment streaks while turning the dab into the long, thin
+    // bristle stroke from the supplied reference instead of a rounded blob.
+    o.drawImage(
+      source,
+      minX, minY, bodyW, bodyH,
+      padX, padY, outW - padX * 2, outH - padY * 2
+    );
 
     let img;
     try {
-      img = o.getImageData(0, 0, w, h);
+      img = o.getImageData(0, 0, outW, outH);
     } catch (_) {
       return source;
     }
 
     const data = img.data;
-    const cx = (w - 1) * 0.50;
-    const cy = (h - 1) * 0.50;
-    const rx = Math.max(2, w * 0.46);
-    const ry = Math.max(2, h * 0.36);
-
-    for (let y = 0; y < h; y++) {
-      const yn = (y - cy) / ry;
-      for (let x = 0; x < w; x++) {
-        const k = (y * w + x) * 4;
+    for (let y = 0; y < outH; y++) {
+      const yn = y / Math.max(1, outH - 1);
+      for (let x = 0; x < outW; x++) {
+        const k = (y * outW + x) * 4;
         if (!data[k + 3]) continue;
 
-        const xn = (x - cx) / rx;
-        if (xn <= -1.06 || xn >= 1.05) {
-          data[k + 3] = 0;
-          continue;
+        const u = x / Math.max(1, outW - 1);
+        let profile;
+        if (u <= 0.52) {
+          const q = clamp(u / 0.52, 0, 1);
+          profile = Math.pow(Math.sin(q * Math.PI * 0.5), 0.55);
+        } else {
+          const q = clamp((u - 0.52) / 0.48, 0, 1);
+          profile = Math.pow(Math.cos(q * Math.PI * 0.5), 0.42);
         }
 
-        // Filbert / loaded-acrylic dab: a restrained taper behind the stroke,
-        // a flatter body, and a rounded leading end. No random edge jitter.
-        const left = smoothstep(-1.02, -0.46, xn);
-        let right = 1;
-        if (xn > 0.46) {
-          const q = (xn - 0.46) / 0.59;
-          right = Math.sqrt(Math.max(0, 1 - q * q));
-        }
-        const crown = 0.96 + 0.04 * Math.cos(clamp(xn, -0.45, 0.45) * Math.PI);
-        const half = Math.max(0.035, left * right * crown);
-        const edge = Math.abs(yn) / half;
+        // Slight hand-painted sweep through the centre line, but keep the
+        // silhouette controlled so straight strokes still read as a brush mark.
+        const centre = 0.5 + 0.018 * Math.sin((u - 0.08) * Math.PI * 2);
+        const half = Math.max(0.01, 0.47 * profile);
+        const edge = Math.abs(yn - centre) / half;
+        const mask = 1 - smoothstep(0.83, 1.02, edge);
 
-        // About a 1-3 px feather on normal brush sizes: acrylic-soft, not blurry.
-        const mask = 1 - smoothstep(0.86, 1.02, edge);
-        data[k + 3] = Math.round(data[k + 3] * clamp(mask, 0, 1));
+        // The long tip overlaps more stamps than the old round dab. Reduce each
+        // stamp's load so the final stroke keeps Acrylic v3 translucency and the
+        // original internal bristle streaks instead of becoming a solid bar.
+        const load = 0.30 + 0.08 * profile;
+        data[k + 3] = Math.round(data[k + 3] * clamp(mask * load, 0, 1));
       }
     }
 
@@ -95,23 +133,62 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
     if (!ctx || patchedContexts.has(ctx)) return true;
 
     const nativeDrawImage = ctx.drawImage.bind(ctx);
-    const X_STRETCH = 1.15;
-    const Y_SCALE = 0.86;
 
     ctx.drawImage = function(source, ...args) {
       try {
-        // Acrylic v3 stamps are small offscreen canvases drawn with the 3-arg
-        // overload. Undo/history canvases are full-size, so they bypass this.
+        // Acrylic v3 brush stamps are small offscreen canvases drawn with the
+        // 3-argument overload. Full-size undo/history canvases bypass this.
         const isCanvas = source && typeof source.width === 'number' && typeof source.height === 'number';
         const looksLikeTip = isCanvas && args.length === 2 && source.width >= 10 && source.height >= 10 && source.width <= 260 && source.height <= 260;
         if (looksLikeTip) {
-          const shaped = buildNaturalTip(d, source);
+          const shaped = buildReferenceTip(d, source);
           const dx = Number(args[0]);
           const dy = Number(args[1]);
-          const dw = source.width * X_STRETCH;
-          const dh = source.height * Y_SCALE;
           const cx = dx + source.width / 2;
           const cy = dy + source.height / 2;
+          const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+          const px = m ? m.e : NaN;
+          const py = m ? m.f : NaN;
+          const angle = m ? Math.atan2(m.b, m.a) : 0;
+
+          let state = stampState.get(source);
+          if (!state) {
+            state = {drawn: 0, lastX: px, lastY: py, lastAngle: angle};
+            stampState.set(source, state);
+          }
+
+          // The original engine places its very first dab before it knows the
+          // stroke direction. Keep that first mark compact so an angled stroke
+          // does not begin with a long horizontal artefact.
+          if (state.drawn === 0) {
+            state.drawn = 1;
+            state.lastX = px;
+            state.lastY = py;
+            state.lastAngle = angle;
+            const starterW = shaped.height * 0.92;
+            const starterH = shaped.height * 0.72;
+            return nativeDrawImage(shaped, cx - starterW / 2, cy - starterH / 2, starterW, starterH);
+          }
+
+          const step = shaped.height * 0.42;
+          if (state.drawn > 1 && Number.isFinite(px) && Number.isFinite(py) && Number.isFinite(state.lastX) && Number.isFinite(state.lastY)) {
+            const travelled = Math.hypot(px - state.lastX, py - state.lastY);
+            if (travelled < step) return;
+          }
+
+          let lengthScale = 1;
+          if (state.drawn > 1 && m) {
+            const turn = angleDelta(angle, state.lastAngle);
+            if (turn > 0.42) lengthScale = clamp(1 - (turn - 0.42) * 0.62, 0.58, 1);
+          }
+
+          state.drawn++;
+          state.lastX = px;
+          state.lastY = py;
+          state.lastAngle = angle;
+
+          const dw = shaped.width * lengthScale;
+          const dh = shaped.height;
           return nativeDrawImage(shaped, cx - dw / 2, cy - dh / 2, dw, dh);
         }
       } catch (_) {}
@@ -119,7 +196,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
     };
 
     patchedContexts.add(ctx);
-    d.documentElement.dataset.naturalEdgeLive = '2';
+    d.documentElement.dataset.naturalEdgeLive = '4';
     return true;
   }
 
@@ -133,7 +210,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
       return false;
     }
     if (!d || !d.documentElement) return false;
-    if (d.documentElement.dataset.naturalEdgeLive === '2') return true;
+    if (d.documentElement.dataset.naturalEdgeLive === '4') return true;
 
     const paint = d.getElementById('paint');
     if (!paint || !paint.width || !paint.height) return false;
@@ -163,8 +240,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
 
   startAttachLoop();
 })();
-
 </script>
-<!-- live filbert edge: no post-stroke resize; 2026-08-15 -->
+<!-- reference bristle shape: long tapered live stamp, 2026-08-15 -->
 </body>
 </html>
