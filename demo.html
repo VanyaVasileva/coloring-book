@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>City Coloring Demo</title>
+<style>
+html,body{margin:0;height:100%;background:#f7f4ed;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#bar{height:42px;display:flex;align-items:center;justify-content:center;gap:10px;background:#292721;color:#fff;font-size:13px;font-weight:700;letter-spacing:.02em}
+#bar .dot{width:8px;height:8px;border-radius:50%;background:#8fce8f}
+#app{width:100%;height:calc(100% - 42px);border:0;display:block;background:#fff}
+</style>
+</head>
+<body>
+<div id="bar"><span class="dot"></span><span>Interactive test demo — your live index.html is untouched</span></div>
+<iframe id="app" src="./index.html?demo_patch=1"></iframe>
+<script>
+(() => {
+  const frame=document.getElementById('app');
+  frame.addEventListener('load',()=>{
+    let w,d;
+    try{w=frame.contentWindow;d=frame.contentDocument;}catch(e){return;}
+    if(!d || d.documentElement.dataset.demoPatched) return;
+    d.documentElement.dataset.demoPatched='1';
+
+    const $=id=>d.getElementById(id);
+    const paint=$('paint'), guide=$('guide'), highlight=$('highlight'), shell=$('shell');
+    const viewport=d.querySelector('.viewport'), stage=d.querySelector('.stage');
+    if(!paint||!guide||!shell||!viewport) return;
+
+    const freshCanvas=paint.cloneNode(true);
+    freshCanvas.width=paint.width; freshCanvas.height=paint.height;
+    paint.replaceWith(freshCanvas);
+    const c=freshCanvas, ctx=c.getContext('2d',{willReadFrequently:true});
+    const W=c.width, H=c.height;
+
+    function fresh(id){
+      const old=$(id); if(!old) return null;
+      const n=old.cloneNode(true); old.replaceWith(n); return n;
+    }
+    const toolPaint=fresh('toolPaint'), toolErase=fresh('toolErase'), toolMove=fresh('toolMove');
+    const undo=fresh('undo'), redo=fresh('redo'), clear=fresh('clear');
+    const zoomOut=fresh('zoomOut'), zoomReset=fresh('zoomReset'), zoomIn=fresh('zoomIn');
+    const refBtn=fresh('refBtn'), exportBtn=fresh('exportBtn');
+    const customColor=fresh('customColor'), hexColor=fresh('hexColor');
+    const size=$('size'), opacity=$('opacity'), status=$('statusMsg');
+    const mutedness=$('mutedness'), toneShift=$('toneShift'), muteVal=$('muteVal'), toneVal=$('toneVal'), toneGrid=$('toneGrid');
+    const currentDot=$('currentDot'), currentHex=$('currentHex'), currentLabel=$('currentLabel');
+    const reference=$('reference');
+
+    const style=d.createElement('style');
+    style.textContent=`
+      #guide{z-index:1!important;opacity:1!important;display:block!important;pointer-events:none!important}
+      #highlight{z-index:2!important;pointer-events:none!important;mix-blend-mode:multiply}
+      #paint{z-index:3!important;pointer-events:auto!important;touch-action:none!important;mix-blend-mode:multiply}
+      .viewport{aspect-ratio:1000/1417!important;height:auto!important;overflow:hidden!important}
+      .swatch.demo-done{opacity:.42!important;filter:saturate(.5)}
+      .swatch.demo-done::after{content:'✓';position:absolute;right:5px;top:4px;width:20px;height:20px;border-radius:50%;background:#fff;border:1px solid #111;color:#111;display:flex;align-items:center;justify-content:center;font-weight:900}
+      .swatch:disabled{cursor:not-allowed!important}
+      #demoBadge{font-size:11px;padding:7px 9px;border-radius:8px;background:#e8f4e8;border:1px solid #b8d8b8;color:#285228;margin-top:8px}
+    `;
+    d.head.appendChild(style);
+    const left=d.querySelector('aside.left');
+    if(left){const badge=d.createElement('div');badge.id='demoBadge';badge.textContent='Hosted demo patch active';left.insertBefore(badge,left.firstChild);}
+
+    const palette=[...d.querySelectorAll('.swatch')].map(el=>({el,n:Number(el.dataset.n),hex:(el.dataset.hex||'#000000').toUpperCase()})).sort((a,b)=>a.n-b.n);
+    let selected=6, color=(palette.find(p=>p.n===6)||palette[0]).hex;
+    let tool='paint', scale=1, tx=0, ty=0;
+    let history=[], future=[];
+    let drawing=false, last=null, smooth=null;
+    let pan=null, pointers=new Map(), gesture=null;
+    const MIN=1,MAX=6,STREAM=0.46;
+
+    const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+    const norm=v=>{v=(v||'').trim();if(!v.startsWith('#'))v='#'+v;return /^#[0-9a-fA-F]{6}$/.test(v)?v.toUpperCase():null};
+    const canvasPos=e=>{const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}};
+    const midpoint=a=>({x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2});
+    const distance=a=>Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+
+    function fit(){
+      const header=d.querySelector('header');
+      const hh=header?header.getBoundingClientRect().height:0;
+      const aw=Math.max(260,stage.clientWidth-10), ah=Math.max(350,w.innerHeight-hh-26), ar=W/H;
+      let vw=Math.min(aw,980), vh=vw/ar;
+      if(vh>ah){vh=ah;vw=vh*ar;}
+      viewport.style.width=vw+'px';viewport.style.height=vh+'px';
+      clampPan();applyTransform();
+    }
+    function applyTransform(){shell.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;}
+    function clampPan(){const r=viewport.getBoundingClientRect();tx=clamp(tx,Math.min(0,r.width-r.width*scale),0);ty=clamp(ty,Math.min(0,r.height-r.height*scale),0);}
+    function setZoom(next,cx,cy){
+      const r=viewport.getBoundingClientRect(), ax=(cx??r.left+r.width/2)-r.left, ay=(cy??r.top+r.height/2)-r.top, before=scale;
+      scale=clamp(next,MIN,MAX);tx=ax-(ax-tx)*(scale/before);ty=ay-(ay-ty)*(scale/before);clampPan();applyTransform();
+    }
+
+    function setTool(t){
+      tool=t;[toolPaint,toolErase,toolMove].forEach(b=>b&&b.classList.remove('active'));
+      ({paint:toolPaint,erase:toolErase,move:toolMove})[t]?.classList.add('active');
+      c.style.cursor=t==='move'?'grab':'crosshair';
+      if(status)status.textContent=t==='move'?'Move mode — drag to pan and use wheel/pinch to zoom.':t==='erase'?'Erase mode — drag over your paint.':`Paint mode — number ${selected} highlighted.`;
+    }
+
+    function save(){history.push(ctx.getImageData(0,0,W,H));if(history.length>30)history.shift();future=[];}
+    undo&&undo.addEventListener('click',()=>{if(!history.length)return;future.push(ctx.getImageData(0,0,W,H));ctx.putImageData(history.pop(),0,0);refreshCompletion();});
+    redo&&redo.addEventListener('click',()=>{if(!future.length)return;history.push(ctx.getImageData(0,0,W,H));ctx.putImageData(future.pop(),0,0);refreshCompletion();});
+    clear&&clear.addEventListener('click',()=>{save();ctx.clearRect(0,0,W,H);palette.forEach(p=>{p.el.disabled=false;p.el.classList.remove('demo-done')});updateHighlight();});
+
+    function drawSegment(a,b){
+      ctx.save();ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=Number(size?.value||28);
+      if(tool==='erase'){ctx.globalCompositeOperation='destination-out';ctx.globalAlpha=1;ctx.strokeStyle='#000';}
+      else{ctx.globalCompositeOperation='source-over';ctx.globalAlpha=Number(opacity?.value||100)/100;ctx.strokeStyle=color;}
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.restore();
+    }
+    function smoothed(raw){if(!smooth){smooth={...raw};return{...raw}}smooth.x+=(raw.x-smooth.x)*STREAM;smooth.y+=(raw.y-smooth.y)*STREAM;return{...smooth};}
+
+    c.addEventListener('pointerdown',e=>{
+      e.preventDefault();c.setPointerCapture(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(tool==='move'){
+        if(pointers.size===2){const pts=[...pointers.values()].slice(0,2);gesture={d:distance(pts),m:midpoint(pts),s:scale,x:tx,y:ty};pan=null;}
+        else{pan={x:e.clientX,y:e.clientY,tx,ty};c.style.cursor='grabbing';}
+        return;
+      }
+      if(pointers.size>1)return;
+      save();drawing=true;last=canvasPos(e);smooth={...last};drawSegment(last,last);
+    });
+    c.addEventListener('pointermove',e=>{
+      if(!pointers.has(e.pointerId))return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(tool==='move'){
+        if(pointers.size>=2&&gesture){const pts=[...pointers.values()].slice(0,2),nd=distance(pts),nm=midpoint(pts);scale=clamp(gesture.s*nd/Math.max(1,gesture.d),MIN,MAX);const f=scale/gesture.s,r=viewport.getBoundingClientRect();tx=(nm.x-r.left)-((gesture.m.x-r.left)-gesture.x)*f;ty=(nm.y-r.top)-((gesture.m.y-r.top)-gesture.y)*f;clampPan();applyTransform();}
+        else if(pan&&pointers.size===1){tx=pan.tx+(e.clientX-pan.x);ty=pan.ty+(e.clientY-pan.y);clampPan();applyTransform();}
+        return;
+      }
+      if(!drawing||pointers.size!==1)return;const raw=canvasPos(e),p=smoothed(raw);drawSegment(last,p);last=p;
+    });
+    function end(e){
+      pointers.delete(e.pointerId);try{c.releasePointerCapture(e.pointerId)}catch(_){ }
+      if(tool==='move'){if(pointers.size===0){pan=null;gesture=null;c.style.cursor='grab';}else if(pointers.size===1){const q=[...pointers.values()][0];gesture=null;pan={x:q.x,y:q.y,tx,ty};}return;}
+      if(drawing&&pointers.size===0){drawing=false;last=null;smooth=null;refreshCompletion(true);}
+    }
+    c.addEventListener('pointerup',end);c.addEventListener('pointercancel',end);
+    viewport.addEventListener('wheel',e=>{if(tool!=='move')return;e.preventDefault();setZoom(scale*(e.deltaY<0?1.1:.9),e.clientX,e.clientY);},{passive:false});
+
+    toolPaint&&toolPaint.addEventListener('click',()=>setTool('paint'));
+    toolErase&&toolErase.addEventListener('click',()=>setTool('erase'));
+    toolMove&&toolMove.addEventListener('click',()=>setTool('move'));
+    zoomIn&&zoomIn.addEventListener('click',()=>setZoom(scale*1.35));
+    zoomOut&&zoomOut.addEventListener('click',()=>setZoom(scale/1.35));
+    zoomReset&&zoomReset.addEventListener('click',()=>{scale=1;tx=ty=0;applyTransform();});
+
+    function setColor(hex,label){const h=norm(hex);if(!h)return;color=h;if(customColor)customColor.value=h;if(hexColor)hexColor.value=h;if(currentDot)currentDot.style.background=h;if(currentHex)currentHex.textContent=h;if(currentLabel)currentLabel.textContent=label||`Number ${selected}`;renderTones();updateHighlight();}
+    function h2s(hex){const r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255,max=Math.max(r,g,b),min=Math.min(r,g,b);let h=0,s=0,l=(max+min)/2;if(max!==min){const dd=max-min;s=l>.5?dd/(2-max-min):dd/(max+min);if(max===r)h=(g-b)/dd+(g<b?6:0);else if(max===g)h=(b-r)/dd+2;else h=(r-g)/dd+4;h/=6;}return[h*360,s*100,l*100];}
+    function s2h(h,s,l){h=((h%360)+360)%360;s=clamp(s,0,100)/100;l=clamp(l,0,100)/100;const a=s*Math.min(l,1-l),f=n=>{const k=(n+h/30)%12;return l-a*Math.max(-1,Math.min(k-3,9-k,1))};return'#'+[f(0),f(8),f(4)].map(v=>Math.round(255*v).toString(16).padStart(2,'0')).join('').toUpperCase();}
+    function renderTones(){if(!toneGrid)return;const [h,s,l]=h2s(color),m=Number(mutedness?.value||0)/100,shift=Number(toneShift?.value||0);if(muteVal)muteVal.textContent=(mutedness?.value||0)+'%';if(toneVal)toneVal.textContent=(shift>0?'+':'')+shift;toneGrid.innerHTML='';[-24,-16,-8,0,8,16,24].forEach(delta=>{const hx=s2h(h,s*(1-m),clamp(l+shift+delta,5,95));const b=d.createElement('button');b.type='button';b.className='toneChip';b.style.background=hx;b.title=hx;b.addEventListener('click',()=>setColor(hx,'Muted tone'));toneGrid.appendChild(b);});}
+    customColor&&customColor.addEventListener('input',()=>setColor(customColor.value,'Custom color'));
+    hexColor&&hexColor.addEventListener('change',()=>setColor(hexColor.value,'Custom color'));
+    mutedness&&mutedness.addEventListener('input',renderTones);toneShift&&toneShift.addEventListener('input',renderTones);
+
+    const maskCanvas=d.createElement('canvas');maskCanvas.width=W;maskCanvas.height=H;const mctx=maskCanvas.getContext('2d',{willReadFrequently:true});
+    function mask(n){return $('mask'+n)}
+    function updateHighlight(){
+      if(!highlight)return;const hctx=highlight.getContext('2d');hctx.clearRect(0,0,W,H);const img=mask(selected);if(!img||!img.complete||!img.naturalWidth)return;hctx.save();hctx.globalAlpha=.23;hctx.drawImage(img,0,0,W,H);hctx.globalCompositeOperation='source-in';hctx.fillStyle=color;hctx.fillRect(0,0,W,H);hctx.restore();
+    }
+    function coverage(n){
+      try{const img=mask(n);if(!img||!img.complete||!img.naturalWidth)return 0;mctx.clearRect(0,0,W,H);mctx.drawImage(img,0,0,W,H);const md=mctx.getImageData(0,0,W,H).data,pd=ctx.getImageData(0,0,W,H).data;let total=0,hit=0;for(let y=0;y<H;y+=3){const row=y*W*4;for(let x=0;x<W;x+=3){const i=row+x*4;if(md[i+3]>20){total++;if(pd[i+3]>18)hit++;}}}return total?hit/total:0;}catch(e){return 0;}
+    }
+    function refreshCompletion(auto=false){
+      const p=palette.find(p=>p.n===selected);if(!p)return;const ratio=coverage(selected),done=ratio>=.985;p.el.classList.toggle('demo-done',done);p.el.disabled=done;
+      if(status)status.textContent=done?`Number ${selected} complete.`:`Number ${selected} highlighted — ${Math.round(ratio*100)}% covered.`;
+      if(done&&auto){const next=palette.find(q=>!q.el.disabled&&q.n!==selected);if(next){selected=next.n;palette.forEach(q=>q.el.classList.toggle('selected',q.n===selected));setColor(next.hex,`Palette ${next.n}`);}}
+    }
+    palette.forEach(p=>{const clone=p.el.cloneNode(true);p.el.replaceWith(clone);p.el=clone;clone.addEventListener('click',()=>{if(clone.disabled)return;selected=p.n;palette.forEach(q=>q.el.classList.toggle('selected',q.n===selected));setColor(p.hex,`Palette ${p.n}`);refreshCompletion();});});
+
+    if(refBtn&&reference)refBtn.addEventListener('click',()=>{reference.scrollIntoView({behavior:'smooth',block:'center'});});
+    if(exportBtn)exportBtn.addEventListener('click',()=>{const out=d.createElement('canvas');out.width=W;out.height=H;const o=out.getContext('2d');o.fillStyle='#fff';o.fillRect(0,0,W,H);o.drawImage(guide,0,0,W,H);o.globalCompositeOperation='multiply';o.drawImage(c,0,0,W,H);o.globalCompositeOperation='source-over';const a=d.createElement('a');a.download='city-colored-demo.png';a.href=out.toDataURL('image/png');a.click();});
+
+    function waitImages(){return Promise.all([guide,...palette.map(p=>mask(p.n))].filter(Boolean).map(img=>img.complete&&img.naturalWidth?Promise.resolve():new Promise(r=>{img.addEventListener('load',r,{once:true});img.addEventListener('error',r,{once:true});})));}
+    waitImages().then(()=>{fit();selected=6;palette.forEach(q=>q.el.classList.toggle('selected',q.n===selected));setColor((palette.find(p=>p.n===selected)||palette[0]).hex,'Palette 6');setTool('paint');updateHighlight();if(status)status.textContent='Demo ready — Paint is active. Draw directly on the city.';});
+    w.addEventListener('resize',fit);
+  });
+})();
+</script>
+</body>
+</html>
