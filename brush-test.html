@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Textured Acrylic Brush Test</title>
+<style>
+:root{--bg:#f5f2eb;--ink:#292721;--line:#d4cdc1}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overscroll-behavior:none}
+header{position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid var(--line);padding:9px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+h1{font:500 17px Georgia,serif;margin:0}.tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+button,input{font:inherit}button{border:1px solid #cfc7bb;background:#fff;border-radius:9px;padding:9px 10px;color:var(--ink);font-size:12px;font-weight:700}button.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:0;min-height:calc(100dvh - 58px)}
+.stage{display:flex;justify-content:center;align-items:flex-start;padding:10px;overflow:hidden}.viewport{position:relative;overflow:hidden;background:#fff;box-shadow:0 4px 20px #0001;touch-action:none;user-select:none}.shell{position:absolute;inset:0;transform-origin:0 0}.layer{position:absolute;inset:0;width:100%;height:100%;display:block}#guide{z-index:1;pointer-events:none}#paint{z-index:2;touch-action:none;mix-blend-mode:multiply}
+aside{border-left:1px solid var(--line);background:#ffffffb8;padding:12px;overflow:auto}.label{font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:800;color:#716b62;margin:12px 0 6px}.row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px}.pill{background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px;font-size:12px;line-height:1.4}.brush{font-weight:800}.sw{width:100%;height:38px;border:1px solid var(--line);border-radius:8px;padding:2px;background:#fff}input[type=range]{width:100%}
+@media(max-width:760px){main{grid-template-columns:1fr}.stage{padding:7px}aside{border-left:0;border-top:1px solid var(--line);padding-bottom:90px}header{position:relative}.tools button{min-height:42px}}
+</style>
+</head>
+<body>
+<header><h1>Textured Acrylic Brush Test</h1><div class="tools"><button id="paintBtn" class="active">🖌️ Paint</button><button id="moveBtn">✋ Move</button><button id="eraseBtn">🧼 Erase</button><button id="zoomOut">−</button><button id="zoomIn">+</button><button id="undo">Undo</button><button id="clear">Clear</button></div></header>
+<main>
+<section class="stage" id="stage"><div class="viewport" id="viewport"><div class="shell" id="shell"><canvas id="guide" class="layer"></canvas><canvas id="paint" class="layer"></canvas></div></div></section>
+<aside>
+<div class="pill"><span class="brush">Textured Acrylic</span><br>Visible bristle streaks, slightly broken edges, layered acrylic buildup.</div>
+<div class="label">Brush size</div><div class="row"><span>Size</span><strong id="sizeVal">36</strong></div><input id="size" type="range" min="5" max="100" value="36">
+<div class="label">Opacity</div><div class="row"><span>Paint</span><strong id="opacityVal">100%</strong></div><input id="opacity" type="range" min="25" max="100" value="100">
+<div class="label">Color</div><input id="color" class="sw" type="color" value="#006C6C">
+<div class="label">Sketch opacity</div><div class="row"><span>Guide</span><strong id="guideVal">100%</strong></div><input id="guideOpacity" type="range" min="0" max="100" value="100">
+<div class="label">Status</div><div id="status" class="pill">Loading city artwork…</div>
+</aside>
+</main>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id),stage=$('stage'),viewport=$('viewport'),shell=$('shell'),guide=$('guide'),paint=$('paint'),gctx=guide.getContext('2d'),ctx=paint.getContext('2d',{alpha:true,desynchronized:true});
+const size=$('size'),opacity=$('opacity'),color=$('color'),status=$('status');
+let W=1000,H=1417,tool='paint',scale=1,tx=0,ty=0,active=new Map(),mode=null,stroke=null,gesture=null,pan=null,history=[];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),mid=p=>({x:(p[0].x+p[1].x)/2,y:(p[0].y+p[1].y)/2}),dist=p=>Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
+function pos(e){const r=paint.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height,pressure:e.pressure>0?e.pressure:.5};}
+function fit(){const header=document.querySelector('header').getBoundingClientRect().height,side=innerWidth>760?240:0,aw=Math.max(260,innerWidth-side-20),ah=innerWidth<=760?Math.max(390,Math.min(innerHeight*.67,700)):Math.max(390,innerHeight-header-20),ar=W/H;let vw=Math.min(aw,950),vh=vw/ar;if(vh>ah){vh=ah;vw=vh*ar}viewport.style.width=vw+'px';viewport.style.height=vh+'px';clampPan();apply();}
+function apply(){shell.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`}
+function clampPan(){const r=viewport.getBoundingClientRect();tx=clamp(tx,Math.min(0,r.width-r.width*scale),0);ty=clamp(ty,Math.min(0,r.height-r.height*scale),0)}
+function zoom(next,cx,cy){const r=viewport.getBoundingClientRect(),ax=(cx??r.left+r.width/2)-r.left,ay=(cy??r.top+r.height/2)-r.top,b=scale;scale=clamp(next,1,6);tx=ax-(ax-tx)*(scale/b);ty=ay-(ay-ty)*(scale/b);clampPan();apply()}
+function snapshot(){const c=document.createElement('canvas');c.width=W;c.height=H;c.getContext('2d').drawImage(paint,0,0);return c}function save(){history.push(snapshot());if(history.length>8)history.shift()}
+function profile(brush){const count=clamp(Math.round(brush/5),8,12),span=brush*.98,step=span/count,bands=[];for(let i=0;i<count;i++){const edge=Math.abs((i+.5)/count-.5)*2;bands.push({offset:-span/2+(i+.5)*step+(Math.random()-.5)*step*.26,width:Math.max(.9,step*(.48+Math.random()*.22)),alpha:clamp(.88-Math.random()*.20-edge*.08,.56,.88),drift:(Math.random()-.5)*brush*.045})}const hairs=[];for(let i=0;i<5;i++)hairs.push({offset:(Math.random()-.5)*brush*.94,width:Math.max(.65,brush*(.011+Math.random()*.015)),alpha:.22+Math.random()*.16,drift:(Math.random()-.5)*brush*.07});return{bands,hairs}}
+function pf(p){return clamp(.82+(p?.pressure??.5)*.36,.84,1.16)}
+function smooth(raw){if(!stroke.smooth){stroke.smooth={...raw};return{...raw}}const dx=raw.x-stroke.smooth.x,dy=raw.y-stroke.smooth.y,speed=Math.hypot(dx,dy),follow=clamp(.70+speed/220,.70,.93);stroke.smooth.x+=dx*follow;stroke.smooth.y+=dy*follow;stroke.smooth.pressure=raw.pressure;return{...stroke.smooth}}
+function acrylic(a,b){const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);if(len<.05)return;const nx=-dy/len,ny=dx/len,alpha=+opacity.value/100,p=pf(b),brush=+size.value,fade=clamp(.98-len/700,.86,.98);ctx.save();ctx.globalCompositeOperation='source-over';ctx.strokeStyle=color.value;ctx.lineCap='round';ctx.lineJoin='round';ctx.globalAlpha=alpha*.58*fade;ctx.lineWidth=brush*.84*p;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();for(const lane of stroke.profile.bands){const ox=nx*lane.offset*p,oy=ny*lane.offset*p;ctx.globalAlpha=alpha*lane.alpha*fade;ctx.lineWidth=lane.width*p;ctx.beginPath();ctx.moveTo(a.x+ox,a.y+oy);ctx.lineTo(b.x+ox+nx*lane.drift,b.y+oy+ny*lane.drift);ctx.stroke()}for(const lane of stroke.profile.hairs){const ox=nx*lane.offset*p,oy=ny*lane.offset*p;ctx.globalAlpha=alpha*lane.alpha;ctx.lineWidth=lane.width*p;ctx.beginPath();ctx.moveTo(a.x+ox,a.y+oy);ctx.lineTo(b.x+ox+nx*lane.drift,b.y+oy+ny*lane.drift);ctx.stroke()}ctx.restore()}
+function dot(p){const brush=+size.value,alpha=+opacity.value/100,f=pf(p),len=brush*.54*f;ctx.save();ctx.translate(p.x,p.y);ctx.strokeStyle=color.value;ctx.lineCap='round';ctx.globalAlpha=alpha*.58;ctx.lineWidth=brush*.78*f;ctx.beginPath();ctx.moveTo(-len/2,0);ctx.lineTo(len/2,0);ctx.stroke();for(const lane of [...stroke.profile.bands,...stroke.profile.hairs]){ctx.globalAlpha=alpha*lane.alpha;ctx.lineWidth=lane.width*f;ctx.beginPath();ctx.moveTo(-len/2,lane.offset*f);ctx.lineTo(len/2,lane.offset*f);ctx.stroke()}ctx.restore()}
+function erase(a,b){ctx.save();ctx.globalCompositeOperation='destination-out';ctx.globalAlpha=.88;ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=(+size.value)*.92*pf(b);ctx.strokeStyle='#000';ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.restore()}
+function eraseDot(p){ctx.save();ctx.globalCompositeOperation='destination-out';ctx.globalAlpha=.88;ctx.beginPath();ctx.arc(p.x,p.y,(+size.value)*.46*pf(p),0,Math.PI*2);ctx.fill();ctx.restore()}
+function draw(raw){const p=smooth(raw);if(!stroke.last){stroke.last={...p};tool==='erase'?eraseDot(p):dot(p);return}const q=stroke.last;if(Math.hypot(p.x-q.x,p.y-q.y)<.12)return;tool==='erase'?erase(q,p):acrylic(q,p);stroke.last={...p}}
+function begin(p){save();mode='draw';stroke={last:null,smooth:null,profile:profile(+size.value)};draw(p)}
+function setTool(t){tool=t;mode=null;stroke=null;[$('paintBtn'),$('moveBtn'),$('eraseBtn')].forEach(b=>b.classList.remove('active'));$(t==='paint'?'paintBtn':t==='move'?'moveBtn':'eraseBtn').classList.add('active');paint.style.cursor=t==='move'?'grab':'crosshair';status.textContent=t==='move'?'Move mode — drag to pan; pinch or +/- to zoom.':t==='erase'?'Erase mode.':'Textured Acrylic active.'}
+paint.addEventListener('pointerdown',e=>{e.preventDefault();try{paint.setPointerCapture(e.pointerId)}catch(_){}active.set(e.pointerId,{x:e.clientX,y:e.clientY});if(active.size>=2){if(mode==='draw'&&history.length){const s=history.pop();ctx.clearRect(0,0,W,H);ctx.drawImage(s,0,0)}const p=[...active.values()].slice(0,2);mode='gesture';stroke=null;gesture={d:dist(p),m:mid(p),s:scale,x:tx,y:ty};return}if(tool==='move'){mode='pan';pan={x:e.clientX,y:e.clientY,tx,ty};return}begin(pos(e))});
+paint.addEventListener('pointermove',e=>{if(!active.has(e.pointerId))return;active.set(e.pointerId,{x:e.clientX,y:e.clientY});if(active.size>=2&&mode!=='gesture'){const p=[...active.values()].slice(0,2);if(mode==='draw'&&history.length){const s=history.pop();ctx.clearRect(0,0,W,H);ctx.drawImage(s,0,0)}mode='gesture';stroke=null;gesture={d:dist(p),m:mid(p),s:scale,x:tx,y:ty}}if(mode==='gesture'&&active.size>=2){const p=[...active.values()].slice(0,2),nd=dist(p),nm=mid(p),ns=clamp(gesture.s*nd/Math.max(1,gesture.d),1,6),f=ns/gesture.s,r=viewport.getBoundingClientRect();scale=ns;tx=(nm.x-r.left)-((gesture.m.x-r.left)-gesture.x)*f;ty=(nm.y-r.top)-((gesture.m.y-r.top)-gesture.y)*f;clampPan();apply();return}if(mode==='pan'&&active.size===1){tx=pan.tx+(e.clientX-pan.x);ty=pan.ty+(e.clientY-pan.y);clampPan();apply();return}if(mode==='draw'&&active.size===1){const arr=typeof e.getCoalescedEvents==='function'&&e.getCoalescedEvents().length?e.getCoalescedEvents():[e];for(const ev of arr)draw(pos(ev))}});
+function end(e){active.delete(e.pointerId);try{paint.releasePointerCapture(e.pointerId)}catch(_){}if(mode==='gesture'&&active.size===1){mode='hold';return}if(active.size===0){mode=null;stroke=null;gesture=null;pan=null}}paint.addEventListener('pointerup',end);paint.addEventListener('pointercancel',end);
+$('paintBtn').onclick=()=>setTool('paint');$('moveBtn').onclick=()=>setTool('move');$('eraseBtn').onclick=()=>setTool('erase');$('zoomIn').onclick=()=>zoom(scale*1.35);$('zoomOut').onclick=()=>zoom(scale/1.35);$('clear').onclick=()=>{save();ctx.clearRect(0,0,W,H)};$('undo').onclick=()=>{if(!history.length)return;const s=history.pop();ctx.clearRect(0,0,W,H);ctx.drawImage(s,0,0)};
+size.oninput=()=>$('sizeVal').textContent=size.value;opacity.oninput=()=>$('opacityVal').textContent=opacity.value+'%';$('guideOpacity').oninput=e=>{guide.style.opacity=e.target.value/100;$('guideVal').textContent=e.target.value+'%'};
+async function init(){const res=await fetch('./index.html',{cache:'no-store'});if(!res.ok)throw new Error('Could not load index.html');const text=await res.text(),doc=new DOMParser().parseFromString(text,'text/html'),src=doc.querySelector('#guide')?.getAttribute('src');if(!src)throw new Error('Guide image not found');const im=new Image();await new Promise((ok,bad)=>{im.onload=ok;im.onerror=bad;im.src=src});W=im.naturalWidth||1000;H=im.naturalHeight||1417;guide.width=paint.width=W;guide.height=paint.height=H;gctx.drawImage(im,0,0,W,H);fit();setTool('paint');status.textContent='Textured Acrylic ready — paint directly on the city.'}
+addEventListener('resize',fit);init().catch(e=>{status.textContent='Could not load city artwork.';console.error(e)});
+})();
+</script>
+</body>
+</html>
