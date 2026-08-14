@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Acrylic v3 — ce822 continuous stroke</title>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}#version{display:block;width:100%;height:100%;border:0;background:#f5f2eb}</style>
+</head>
+<body>
+<iframe id="version" src="./test-v3-ce822.html?v=continuous-1" title="Acrylic v3 ce822 with continuous stamp blending"></iframe>
+<script>
+(() => {
+  'use strict';
+  const host=document.getElementById('version');
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+  function adjustedAlpha(alpha,density){
+    const tipAlpha=.88;
+    const effective=clamp(alpha*tipAlpha,0,.95);
+    const next=1-Math.pow(1-effective,1/Math.max(1,density));
+    return clamp(next/tipAlpha,0,1);
+  }
+
+  function attach(){
+    let outer;try{outer=host.contentDocument}catch(_){return false}
+    if(!outer)return false;
+    const inner=outer.getElementById('app');
+    if(!inner)return false;
+
+    let d;try{d=inner.contentDocument}catch(_){return false}
+    if(!d||!d.documentElement)return false;
+    if(d.documentElement.dataset.ce822Continuous==='1')return true;
+    if(d.documentElement.dataset.cityToolsV3Final!=='1')return false;
+
+    const paint=d.getElementById('paint');
+    const paintBtn=d.getElementById('paintBtn');
+    const fillBtn=d.getElementById('fillBtnV3');
+    const status=d.getElementById('status');
+    if(!paint||!paintBtn)return false;
+
+    const ctx=paint.getContext('2d',{alpha:true,desynchronized:true});
+    if(!ctx||typeof ctx.drawImage!=='function'||typeof ctx.getTransform!=='function')return false;
+
+    const nativeDrawImage=ctx.drawImage.bind(ctx);
+    const active=new Set();
+    let stroke=null;
+
+    const isPaint=()=>paintBtn.classList.contains('active')&&!(fillBtn&&fillBtn.classList.contains('fillActiveV3'));
+    const looksLikeTip=(source,args)=>source&&source.nodeName==='CANVAS'&&args.length===2&&source.width>=10&&source.height>=10&&source.width<=300&&source.height<=300&&ctx.globalCompositeOperation==='source-over'&&ctx.globalAlpha<=.42;
+
+    paint.addEventListener('pointerdown',e=>{
+      if(!isPaint())return;
+      active.add(e.pointerId);
+      if(active.size===1)stroke={prev:null,cancelled:false};
+      else if(stroke)stroke.cancelled=true;
+    },true);
+
+    paint.addEventListener('pointerup',e=>{
+      active.delete(e.pointerId);
+      if(!active.size)stroke=null;
+    });
+    paint.addEventListener('pointercancel',e=>{
+      active.delete(e.pointerId);
+      if(stroke)stroke.cancelled=true;
+      if(!active.size)stroke=null;
+    });
+
+    ctx.drawImage=function(source,...args){
+      if(!stroke||stroke.cancelled||!looksLikeTip(source,args))return nativeDrawImage(source,...args);
+
+      const cur=ctx.getTransform();
+      const alpha=ctx.globalAlpha;
+      if(!stroke.prev){
+        stroke.prev={m:cur,alpha};
+        return nativeDrawImage(source,...args);
+      }
+
+      const prev=stroke.prev.m;
+      const dx=cur.e-prev.e,dy=cur.f-prev.f;
+      const distance=Math.hypot(dx,dy);
+      const target=Math.max(2,source.width*.105);
+      const steps=clamp(Math.ceil(distance/target),2,4);
+      const a=adjustedAlpha(alpha,steps);
+
+      ctx.save();
+      for(let i=1;i<=steps;i++){
+        const q=i/steps;
+        ctx.setTransform(
+          prev.a+(cur.a-prev.a)*q,
+          prev.b+(cur.b-prev.b)*q,
+          prev.c+(cur.c-prev.c)*q,
+          prev.d+(cur.d-prev.d)*q,
+          prev.e+(cur.e-prev.e)*q,
+          prev.f+(cur.f-prev.f)*q
+        );
+        ctx.globalAlpha=a;
+        nativeDrawImage(source,...args);
+      }
+      ctx.restore();
+
+      stroke.prev={m:cur,alpha};
+      return;
+    };
+
+    d.documentElement.dataset.ce822Continuous='1';
+    if(status)status.title='ce822 preserved. Extra interpolated tip positions hide visible stamp silhouettes; per-stamp alpha is optically compensated so the overall brush strength stays close to the original v3.';
+    return true;
+  }
+
+  function start(){let tries=0;const timer=setInterval(()=>{tries++;if(attach()||tries>300)clearInterval(timer)},40)}
+  host.addEventListener('load',start);
+  start();
+})();
+</script>
+</body>
+</html>
