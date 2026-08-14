@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Acrylic v3 — ce822 no visible stamp shape</title>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}#version{display:block;width:100%;height:100%;border:0;background:#f5f2eb}</style>
+</head>
+<body>
+<iframe id="version" src="./test-v3-ce822.html?v=no-stamp-shape-1" title="Acrylic v3 ce822 without visible stamp outlines"></iframe>
+<script>
+(() => {
+  'use strict';
+  const host=document.getElementById('version');
+  const cache=new WeakMap();
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const smoothstep=(a,b,x)=>{x=clamp((x-a)/(b-a),0,1);return x*x*(3-2*x)};
+
+  function makeSeamlessTip(d,source){
+    if(cache.has(source))return cache.get(source);
+    const c=d.createElement('canvas');c.width=source.width;c.height=source.height;
+    const x=c.getContext('2d',{willReadFrequently:true});
+    x.drawImage(source,0,0);
+    let im;
+    try{im=x.getImageData(0,0,c.width,c.height)}catch(_){cache.set(source,source);return source}
+    const a=im.data;
+    let minX=c.width,minY=c.height,maxX=-1,maxY=-1;
+    for(let yy=0;yy<c.height;yy++)for(let xx=0;xx<c.width;xx++){
+      const alpha=a[(yy*c.width+xx)*4+3];
+      if(alpha>4){if(xx<minX)minX=xx;if(xx>maxX)maxX=xx;if(yy<minY)minY=yy;if(yy>maxY)maxY=yy}
+    }
+    if(maxX<=minX||maxY<=minY){cache.set(source,source);return source}
+    const bw=Math.max(1,maxX-minX),bh=Math.max(1,maxY-minY);
+
+    for(let yy=minY;yy<=maxY;yy++)for(let xx=minX;xx<=maxX;xx++){
+      const k=(yy*c.width+xx)*4+3;
+      if(a[k]===0)continue;
+      const u=(xx-minX)/bw,v=(yy-minY)/bh;
+
+      // Only the stamp perimeter is changed. The center of the original v3 tip
+      // remains exactly at its original alpha and keeps its pigment texture.
+      // Longer feather in the stroke direction removes repeating stamp bands.
+      const longFade=smoothstep(0,.235,u)*smoothstep(0,.235,1-u);
+      // Very small transverse feather hides scalloped stamp silhouettes without
+      // turning the brush into a soft airbrush.
+      const sideFade=smoothstep(0,.065,v)*smoothstep(0,.065,1-v);
+      const mask=Math.min(1,longFade*sideFade);
+      a[k]=Math.round(a[k]*mask);
+    }
+    x.putImageData(im,0,0);
+    cache.set(source,c);
+    return c;
+  }
+
+  function attach(){
+    let outer;try{outer=host.contentDocument}catch(_){return false}
+    if(!outer)return false;
+    const inner=outer.getElementById('app');
+    if(!inner)return false;
+    let d;try{d=inner.contentDocument}catch(_){return false}
+    if(!d||!d.documentElement)return false;
+    if(d.documentElement.dataset.ce822NoStampShape==='1')return true;
+    if(d.documentElement.dataset.cityToolsV3Final!=='1')return false;
+
+    const paint=d.getElementById('paint'),status=d.getElementById('status');
+    if(!paint||!paint.width||!paint.height)return false;
+    const ctx=paint.getContext('2d',{alpha:true,desynchronized:true});
+    if(!ctx||typeof ctx.drawImage!=='function')return false;
+    const nativeDrawImage=ctx.drawImage.bind(ctx);
+
+    ctx.drawImage=function(source,...args){
+      const isTip=source&&source.nodeName==='CANVAS'&&args.length===2&&
+        source.width>=10&&source.height>=10&&source.width<=300&&source.height<=300&&
+        ctx.globalCompositeOperation==='source-over'&&ctx.globalAlpha<=.40;
+      if(isTip)source=makeSeamlessTip(d,source);
+      return nativeDrawImage(source,...args);
+    };
+
+    d.documentElement.dataset.ce822NoStampShape='1';
+    if(status)status.title='ce822 preserved. Only the outer perimeter of each v3 tip is feathered to hide repeated stamp silhouettes; center opacity and pigment texture are unchanged.';
+    return true;
+  }
+
+  function start(){let tries=0;const timer=setInterval(()=>{tries++;if(attach()||tries>300)clearInterval(timer)},40)}
+  host.addEventListener('load',start);
+  start();
+})();
+</script>
+</body>
+</html>
