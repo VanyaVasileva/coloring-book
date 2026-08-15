@@ -22,6 +22,7 @@ frame.addEventListener('load',()=>{
   try{d=frame.contentDocument;}catch(_){return;}
   if(!d)return;
   const w=d.defaultView;
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const isDark=hex=>{const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return .299*r+.587*g+.114*b<130};
   const buttons=()=>[...d.querySelectorAll('#palette .swatch')];
   const numberOf=b=>buttons().indexOf(b);
@@ -65,6 +66,40 @@ frame.addEventListener('load',()=>{
     if(n!==lastSelected){lastSelected=n;forceColor(n);}
   }
 
+  function cleanGuideBlackFills(){
+    const canvas=d.getElementById('guideCanvas');
+    if(!canvas||canvas.dataset.lineOnly==='1'||!canvas.width||!canvas.height)return;
+    const c=canvas.getContext('2d',{willReadFrequently:true});
+    let img;
+    try{img=c.getImageData(0,0,canvas.width,canvas.height);}catch(_){return;}
+    const data=img.data,W=canvas.width,H=canvas.height,N=W*H;
+    let cur=new Uint8Array(N);
+    for(let i=0,p=0;i<data.length;i+=4,p++){
+      if(data[i+3]>24){
+        const lum=.299*data[i]+.587*data[i+1]+.114*data[i+2];
+        if(lum<120)cur[p]=1;
+      }
+    }
+    // Four erosions identify only deep interiors of solid black shapes.
+    // Thin original linework and numbers never become "interior", so they remain unchanged.
+    for(let pass=0;pass<4;pass++){
+      const next=new Uint8Array(N);
+      for(let y=1;y<H-1;y++){
+        let i=y*W+1;
+        for(let x=1;x<W-1;x++,i++){
+          if(!cur[i])continue;
+          if(cur[i-W-1]&&cur[i-W]&&cur[i-W+1]&&cur[i-1]&&cur[i+1]&&cur[i+W-1]&&cur[i+W]&&cur[i+W+1])next[i]=1;
+        }
+      }
+      cur=next;
+    }
+    for(let p=0,o=0;p<N;p++,o+=4){
+      if(cur[p]){data[o]=255;data[o+1]=255;data[o+2]=255;data[o+3]=0;}
+    }
+    c.putImageData(img,0,0);
+    canvas.dataset.lineOnly='1';
+  }
+
   function installCleanCanvas(){
     if(d.getElementById('cleanCanvasRules'))return;
     const style=d.createElement('style');
@@ -73,42 +108,29 @@ frame.addEventListener('load',()=>{
       #highlight{display:none!important;opacity:0!important;visibility:hidden!important}
       .guideControl{display:none!important}
       #paint{mix-blend-mode:normal!important}
+      .streamlineBlock{margin-top:12px}
+      .streamlineBlock .streamlineHelp{font-size:10px;line-height:1.35;color:var(--muted);margin-top:4px}
     `;
     d.head.appendChild(style);
 
     const paint=d.getElementById('paint');
-    if(paint){
-      paint.style.mixBlendMode='normal';
-      paint.style.zIndex='3';
-    }
+    if(paint){paint.style.mixBlendMode='normal';paint.style.zIndex='3';}
     const highlight=d.getElementById('highlight');
-    if(highlight){
-      highlight.style.display='none';
-      highlight.style.opacity='0';
-      highlight.style.visibility='hidden';
-    }
+    if(highlight){highlight.style.display='none';highlight.style.opacity='0';highlight.style.visibility='hidden';}
     const nav=d.querySelector('.navHint');
     if(nav)nav.innerHTML='<strong>Navigation:</strong> one finger paints/erases/fills. Pinch with two fingers to move/zoom. Tap with two fingers to Undo; tap with three fingers to Redo.';
 
     const exportBtn=d.getElementById('exportBtn');
     if(exportBtn){
       exportBtn.addEventListener('click',e=>{
-        e.preventDefault();
-        e.stopImmediatePropagation();
+        e.preventDefault();e.stopImmediatePropagation();
         const guide=d.getElementById('guideCanvas'),paintCanvas=d.getElementById('paint');
         if(!guide||!paintCanvas)return;
-        const out=d.createElement('canvas');
-        out.width=paintCanvas.width;out.height=paintCanvas.height;
-        const o=out.getContext('2d');
-        o.fillStyle='#fff';o.fillRect(0,0,out.width,out.height);
-        const hidden=guide.style.opacity==='0';
-        if(!hidden)o.drawImage(guide,0,0);
-        o.globalCompositeOperation='source-over';
-        o.drawImage(paintCanvas,0,0);
-        const a=d.createElement('a');
-        a.download='cool-girl-cat-colored.png';
-        a.href=out.toDataURL('image/png');
-        a.click();
+        const out=d.createElement('canvas');out.width=paintCanvas.width;out.height=paintCanvas.height;
+        const o=out.getContext('2d');o.fillStyle='#fff';o.fillRect(0,0,out.width,out.height);
+        const hidden=guide.style.opacity==='0';if(!hidden)o.drawImage(guide,0,0);
+        o.globalCompositeOperation='source-over';o.drawImage(paintCanvas,0,0);
+        const a=d.createElement('a');a.download='cool-girl-cat-colored.png';a.href=out.toDataURL('image/png');a.click();
       },true);
     }
   }
@@ -117,58 +139,118 @@ frame.addEventListener('load',()=>{
     const paint=d.getElementById('paint');
     if(!paint||paint.dataset.touchUndoRedo==='1')return;
     paint.dataset.touchUndoRedo='1';
-    const touches=new Map();
-    let gesture=null;
+    const touches=new Map();let gesture=null;
     const LIMIT=16,MAX_MS=320;
-
     paint.addEventListener('pointerdown',e=>{
       if(e.pointerType!=='touch')return;
       touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
       const count=touches.size;
-      if(count===2||count===3){
-        gesture={maxCount:count,start:performance.now(),moved:false};
-      }else if(gesture&&count>gesture.maxCount){
-        gesture.maxCount=count;
-      }
+      if(count===2||count===3)gesture={maxCount:count,start:performance.now(),moved:false};
+      else if(gesture&&count>gesture.maxCount)gesture.maxCount=count;
     },true);
-
     paint.addEventListener('pointermove',e=>{
       if(e.pointerType!=='touch'||!touches.has(e.pointerId))return;
-      const p=touches.get(e.pointerId);
-      if(Math.hypot(e.clientX-p.x,e.clientY-p.y)>LIMIT&&gesture)gesture.moved=true;
+      const p=touches.get(e.pointerId);if(Math.hypot(e.clientX-p.x,e.clientY-p.y)>LIMIT&&gesture)gesture.moved=true;
     },true);
-
     const finish=e=>{
       if(e.pointerType!=='touch')return;
-      touches.delete(e.pointerId);
-      if(touches.size!==0||!gesture)return;
-      const g=gesture;gesture=null;
-      const elapsed=performance.now()-g.start;
+      touches.delete(e.pointerId);if(touches.size!==0||!gesture)return;
+      const g=gesture;gesture=null;const elapsed=performance.now()-g.start;
       if(g.moved||elapsed>MAX_MS)return;
-      if(g.maxCount===2){
-        w.setTimeout(()=>d.getElementById('undo')?.click(),0);
-      }else if(g.maxCount===3){
-        w.setTimeout(()=>d.getElementById('redo')?.click(),0);
-      }
+      if(g.maxCount===2)w.setTimeout(()=>d.getElementById('undo')?.click(),0);
+      else if(g.maxCount===3)w.setTimeout(()=>d.getElementById('redo')?.click(),0);
     };
     paint.addEventListener('pointerup',finish,true);
     paint.addEventListener('pointercancel',e=>{touches.delete(e.pointerId);if(!touches.size)gesture=null;},true);
   }
 
+  function installStreamLine(){
+    const paint=d.getElementById('paint'),sizeInput=d.getElementById('size');
+    if(!paint||!sizeInput||d.getElementById('streamlineControl'))return;
+
+    let saved=72;
+    try{const s=+w.localStorage.getItem('coolGirlStreamline');if(Number.isFinite(s)&&s>=0&&s<=95)saved=s;}catch(_){}
+
+    const block=d.createElement('div');
+    block.className='streamlineBlock';
+    block.innerHTML=`<div class="label">Stroke stabilization</div><div class="rowLabel"><span>StreamLine</span><span id="streamlineVal">${saved}%</span></div><input id="streamlineControl" type="range" min="0" max="95" value="${saved}"><div class="streamlineHelp">Like Procreate StreamLine: higher values smooth hand wobble and make controlled curves easier.</div>`;
+    sizeInput.insertAdjacentElement('afterend',block);
+    const slider=d.getElementById('streamlineControl'),value=d.getElementById('streamlineVal');
+    slider.addEventListener('input',()=>{value.textContent=slider.value+'%';try{w.localStorage.setItem('coolGirlStreamline',slider.value);}catch(_){}});
+
+    const active=new Set(),states=new Map();
+    function currentTool(){
+      if(d.getElementById('toolMove')?.classList.contains('active')||d.getElementById('mMove')?.classList.contains('active'))return'move';
+      if(d.getElementById('toolFill')?.classList.contains('active')||d.getElementById('mFill')?.classList.contains('active'))return'fill';
+      if(d.getElementById('toolErase')?.classList.contains('active')||d.getElementById('mErase')?.classList.contains('active'))return'erase';
+      return'paint';
+    }
+    function syntheticMove(e,x,y,pressure,buttons){
+      let ev;
+      try{
+        ev=new w.PointerEvent('pointermove',{
+          bubbles:true,cancelable:true,composed:true,
+          pointerId:e.pointerId,pointerType:e.pointerType,isPrimary:e.isPrimary,
+          clientX:x,clientY:y,screenX:e.screenX,screenY:e.screenY,
+          pressure:pressure??e.pressure,width:e.width,height:e.height,
+          tiltX:e.tiltX||0,tiltY:e.tiltY||0,twist:e.twist||0,
+          button:e.button,buttons:buttons??e.buttons
+        });
+      }catch(_){return;}
+      paint.dispatchEvent(ev);
+    }
+
+    paint.addEventListener('pointerdown',e=>{
+      if(!e.isTrusted)return;
+      active.add(e.pointerId);
+      states.set(e.pointerId,{x:e.clientX,y:e.clientY,pressure:e.pressure>0?e.pressure:.5,buttons:e.buttons||1});
+      if(active.size>1)states.clear();
+    },true);
+
+    paint.addEventListener('pointermove',e=>{
+      if(!e.isTrusted||!active.has(e.pointerId))return;
+      if(active.size!==1||currentTool()!=='paint'||+slider.value<=0){
+        states.set(e.pointerId,{x:e.clientX,y:e.clientY,pressure:e.pressure>0?e.pressure:.5,buttons:e.buttons||1});
+        return;
+      }
+      let st=states.get(e.pointerId);
+      if(!st){st={x:e.clientX,y:e.clientY,pressure:e.pressure>0?e.pressure:.5,buttons:e.buttons||1};states.set(e.pointerId,st);return;}
+      const dx=e.clientX-st.x,dy=e.clientY-st.y,dist=Math.hypot(dx,dy),strength=+slider.value/100;
+      // Strong smoothing at slow speeds; catches up more quickly on larger movements to avoid a rubber-band feel.
+      const follow=clamp(1-strength*.72+Math.min(.30,dist/55),.22,1);
+      st.x+=dx*follow;st.y+=dy*follow;
+      st.pressure=e.pressure>0?e.pressure:st.pressure;st.buttons=e.buttons||st.buttons||1;
+      e.preventDefault();e.stopImmediatePropagation();
+      syntheticMove(e,st.x,st.y,st.pressure,st.buttons);
+    },true);
+
+    paint.addEventListener('pointerup',e=>{
+      if(!e.isTrusted)return;
+      const st=states.get(e.pointerId);
+      if(active.size===1&&st&&currentTool()==='paint'&&+slider.value>0){
+        const gap=Math.hypot(e.clientX-st.x,e.clientY-st.y);
+        if(gap>.6)syntheticMove(e,e.clientX,e.clientY,st.pressure,1);
+      }
+      states.delete(e.pointerId);active.delete(e.pointerId);
+    },true);
+    paint.addEventListener('pointercancel',e=>{states.delete(e.pointerId);active.delete(e.pointerId);},true);
+  }
+
   function install(){
     if(!d.getElementById('palette')||!buttons().length)return false;
-    const h1=d.querySelector('h1'); if(h1)h1.textContent='Color Sketchbook — Cool Girl & Cat';
+    const h1=d.querySelector('h1');if(h1)h1.textContent='Color Sketchbook — Cool Girl & Cat';
     d.title='Color Sketchbook — Cool Girl & Cat';
     lockHidden();paintSwatches();
+    cleanGuideBlackFills();
     installCleanCanvas();
     installTouchUndoRedo();
+    installStreamLine();
     buttons().forEach((b,n)=>{if(COLORS[n])b.addEventListener('click',()=>w.setTimeout(()=>forceColor(n),0));});
     const obs=new w.MutationObserver(()=>w.queueMicrotask(syncSelection));
     obs.observe(d.getElementById('palette'),{subtree:true,attributes:true,attributeFilter:['class','disabled']});
     ['clear','undo','redo'].forEach(id=>d.getElementById(id)?.addEventListener('click',()=>w.setTimeout(lockHidden,0)));
-    const first=buttons()[1];
-    if(first&&!first.disabled){first.click();w.setTimeout(()=>forceColor(1),0);lastSelected=1;}
-    const diag=d.getElementById('diag'); if(diag)diag.textContent='Ready — clean numbered sketch, no grid guidance. Two-finger tap Undo; three-finger tap Redo.';
+    const first=buttons()[1];if(first&&!first.disabled){first.click();w.setTimeout(()=>forceColor(1),0);lastSelected=1;}
+    const diag=d.getElementById('diag');if(diag)diag.textContent='Ready — line-only sketch, no grid. StreamLine stabilization active. Two-finger tap Undo; three-finger tap Redo.';
     return true;
   }
 
