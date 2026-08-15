@@ -1,0 +1,1 @@
+Cool Girl demo loader deployment marker. Expected demo.html loader commit: 4d46fec43c24b02317e2d47ce49b5ffead963467
