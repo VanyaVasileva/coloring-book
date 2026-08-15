@@ -1,0 +1,1 @@
+Deploy current demo with clean line-only cool-girl-guide.svg replacement from commit 9fe806604dfd0648f3c85ea1551c2d42302a4c8a.
