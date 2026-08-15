@@ -41,47 +41,39 @@ frame.addEventListener('load',()=>{
       const hex=COLORS[n];
       if(!hex)return;
       b.style.background=hex;
-      const dark=isDark(hex); if(b.classList.contains('dark')!==dark)b.classList.toggle('dark',dark);
-      const h=b.querySelector('.hex'); if(h&&h.textContent!==hex)h.textContent=hex;
+      const dark=isDark(hex);if(b.classList.contains('dark')!==dark)b.classList.toggle('dark',dark);
+      const h=b.querySelector('.hex');if(h&&h.textContent!==hex)h.textContent=hex;
     });
   }
 
   let forcing=false,lastSelected=-1;
   function forceColor(n){
-    const hex=COLORS[n]; if(!hex||forcing)return;
-    const input=d.getElementById('customColor'); if(!input)return;
+    const hex=COLORS[n];if(!hex||forcing)return;
+    const input=d.getElementById('customColor');if(!input)return;
     forcing=true;
     if(input.value.toUpperCase()!==hex)input.value=hex;
     input.dispatchEvent(new w.Event('input',{bubbles:true}));
-    const label=d.getElementById('currentLabel'); if(label)label.textContent='Palette '+n;
-    const currentHex=d.getElementById('currentHex'); if(currentHex)currentHex.textContent=hex;
+    const label=d.getElementById('currentLabel');if(label)label.textContent='Palette '+n;
+    const currentHex=d.getElementById('currentHex');if(currentHex)currentHex.textContent=hex;
     forcing=false;
   }
 
   function syncSelection(){
     lockHidden();paintSwatches();
-    const b=buttons().find(x=>x.classList.contains('selected'));
-    if(!b)return;
-    const n=numberOf(b);
-    if(n!==lastSelected){lastSelected=n;forceColor(n);}
+    const b=buttons().find(x=>x.classList.contains('selected'));if(!b)return;
+    const n=numberOf(b);if(n!==lastSelected){lastSelected=n;forceColor(n);}
   }
 
   function cleanGuideBlackFills(){
     const canvas=d.getElementById('guideCanvas');
     if(!canvas||canvas.dataset.lineOnly==='1'||!canvas.width||!canvas.height)return;
     const c=canvas.getContext('2d',{willReadFrequently:true});
-    let img;
-    try{img=c.getImageData(0,0,canvas.width,canvas.height);}catch(_){return;}
+    let img;try{img=c.getImageData(0,0,canvas.width,canvas.height);}catch(_){return;}
     const data=img.data,W=canvas.width,H=canvas.height,N=W*H;
     let cur=new Uint8Array(N);
     for(let i=0,p=0;i<data.length;i+=4,p++){
-      if(data[i+3]>24){
-        const lum=.299*data[i]+.587*data[i+1]+.114*data[i+2];
-        if(lum<120)cur[p]=1;
-      }
+      if(data[i+3]>24){const lum=.299*data[i]+.587*data[i+1]+.114*data[i+2];if(lum<120)cur[p]=1;}
     }
-    // Four erosions identify only deep interiors of solid black shapes.
-    // Thin original linework and numbers never become "interior", so they remain unchanged.
     for(let pass=0;pass<4;pass++){
       const next=new Uint8Array(N);
       for(let y=1;y<H-1;y++){
@@ -93,42 +85,33 @@ frame.addEventListener('load',()=>{
       }
       cur=next;
     }
-    for(let p=0,o=0;p<N;p++,o+=4){
-      if(cur[p]){data[o]=255;data[o+1]=255;data[o+2]=255;data[o+3]=0;}
-    }
-    c.putImageData(img,0,0);
-    canvas.dataset.lineOnly='1';
+    for(let p=0,o=0;p<N;p++,o+=4){if(cur[p]){data[o]=255;data[o+1]=255;data[o+2]=255;data[o+3]=0;}}
+    c.putImageData(img,0,0);canvas.dataset.lineOnly='1';
   }
 
   function installCleanCanvas(){
     if(d.getElementById('cleanCanvasRules'))return;
-    const style=d.createElement('style');
-    style.id='cleanCanvasRules';
+    const style=d.createElement('style');style.id='cleanCanvasRules';
     style.textContent=`
       #highlight{display:none!important;opacity:0!important;visibility:hidden!important}
       .guideControl{display:none!important}
       #paint{mix-blend-mode:normal!important}
-      .streamlineBlock{margin-top:12px}
-      .streamlineBlock .streamlineHelp{font-size:10px;line-height:1.35;color:var(--muted);margin-top:4px}
+      .streamlineBlock{margin-top:12px;padding-top:2px}
+      .streamlineBlock .streamlineHelp{font-size:10px;line-height:1.4;color:var(--muted);margin-top:5px}
+      .streamlineBlock .assistGap{height:8px}
     `;
     d.head.appendChild(style);
-
-    const paint=d.getElementById('paint');
-    if(paint){paint.style.mixBlendMode='normal';paint.style.zIndex='3';}
-    const highlight=d.getElementById('highlight');
-    if(highlight){highlight.style.display='none';highlight.style.opacity='0';highlight.style.visibility='hidden';}
-    const nav=d.querySelector('.navHint');
-    if(nav)nav.innerHTML='<strong>Navigation:</strong> one finger paints/erases/fills. Pinch with two fingers to move/zoom. Tap with two fingers to Undo; tap with three fingers to Redo.';
-
+    const paint=d.getElementById('paint');if(paint){paint.style.mixBlendMode='normal';paint.style.zIndex='3';}
+    const highlight=d.getElementById('highlight');if(highlight){highlight.style.display='none';highlight.style.opacity='0';highlight.style.visibility='hidden';}
+    const nav=d.querySelector('.navHint');if(nav)nav.innerHTML='<strong>Navigation:</strong> one finger or Apple Pencil paints. Pinch with two fingers to move/zoom. Tap with two fingers to Undo; tap with three fingers to Redo.';
     const exportBtn=d.getElementById('exportBtn');
     if(exportBtn){
       exportBtn.addEventListener('click',e=>{
         e.preventDefault();e.stopImmediatePropagation();
-        const guide=d.getElementById('guideCanvas'),paintCanvas=d.getElementById('paint');
-        if(!guide||!paintCanvas)return;
+        const guide=d.getElementById('guideCanvas'),paintCanvas=d.getElementById('paint');if(!guide||!paintCanvas)return;
         const out=d.createElement('canvas');out.width=paintCanvas.width;out.height=paintCanvas.height;
         const o=out.getContext('2d');o.fillStyle='#fff';o.fillRect(0,0,out.width,out.height);
-        const hidden=guide.style.opacity==='0';if(!hidden)o.drawImage(guide,0,0);
+        if(guide.style.opacity!=='0')o.drawImage(guide,0,0);
         o.globalCompositeOperation='source-over';o.drawImage(paintCanvas,0,0);
         const a=d.createElement('a');a.download='cool-girl-cat-colored.png';a.href=out.toDataURL('image/png');a.click();
       },true);
@@ -136,17 +119,13 @@ frame.addEventListener('load',()=>{
   }
 
   function installTouchUndoRedo(){
-    const paint=d.getElementById('paint');
-    if(!paint||paint.dataset.touchUndoRedo==='1')return;
+    const paint=d.getElementById('paint');if(!paint||paint.dataset.touchUndoRedo==='1')return;
     paint.dataset.touchUndoRedo='1';
-    const touches=new Map();let gesture=null;
-    const LIMIT=16,MAX_MS=320;
+    const touches=new Map();let gesture=null;const LIMIT=16,MAX_MS=320;
     paint.addEventListener('pointerdown',e=>{
       if(e.pointerType!=='touch')return;
       touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
-      const count=touches.size;
-      if(count===2||count===3)gesture={maxCount:count,start:performance.now(),moved:false};
-      else if(gesture&&count>gesture.maxCount)gesture.maxCount=count;
+      const count=touches.size;if(count===2||count===3)gesture={maxCount:count,start:performance.now(),moved:false};else if(gesture&&count>gesture.maxCount)gesture.maxCount=count;
     },true);
     paint.addEventListener('pointermove',e=>{
       if(e.pointerType!=='touch'||!touches.has(e.pointerId))return;
@@ -155,10 +134,8 @@ frame.addEventListener('load',()=>{
     const finish=e=>{
       if(e.pointerType!=='touch')return;
       touches.delete(e.pointerId);if(touches.size!==0||!gesture)return;
-      const g=gesture;gesture=null;const elapsed=performance.now()-g.start;
-      if(g.moved||elapsed>MAX_MS)return;
-      if(g.maxCount===2)w.setTimeout(()=>d.getElementById('undo')?.click(),0);
-      else if(g.maxCount===3)w.setTimeout(()=>d.getElementById('redo')?.click(),0);
+      const g=gesture;gesture=null;if(g.moved||performance.now()-g.start>MAX_MS)return;
+      if(g.maxCount===2)w.setTimeout(()=>d.getElementById('undo')?.click(),0);else if(g.maxCount===3)w.setTimeout(()=>d.getElementById('redo')?.click(),0);
     };
     paint.addEventListener('pointerup',finish,true);
     paint.addEventListener('pointercancel',e=>{touches.delete(e.pointerId);if(!touches.size)gesture=null;},true);
@@ -168,15 +145,33 @@ frame.addEventListener('load',()=>{
     const paint=d.getElementById('paint'),sizeInput=d.getElementById('size');
     if(!paint||!sizeInput||d.getElementById('streamlineControl'))return;
 
-    let saved=72;
-    try{const s=+w.localStorage.getItem('coolGirlStreamline');if(Number.isFinite(s)&&s>=0&&s<=95)saved=s;}catch(_){}
+    let streamSaved=94,pressureSaved=100,minSaved=12;
+    try{
+      const s=+w.localStorage.getItem('coolGirlStreamlineV3');if(Number.isFinite(s)&&s>=0&&s<=100)streamSaved=s;
+      const p=+w.localStorage.getItem('coolGirlPressureSize');if(Number.isFinite(p)&&p>=0&&p<=100)pressureSaved=p;
+      const m=+w.localStorage.getItem('coolGirlMinWidth');if(Number.isFinite(m)&&m>=5&&m<=50)minSaved=m;
+    }catch(_){}
 
-    const block=d.createElement('div');
-    block.className='streamlineBlock';
-    block.innerHTML=`<div class="label">Stroke stabilization</div><div class="rowLabel"><span>StreamLine</span><span id="streamlineVal">${saved}%</span></div><input id="streamlineControl" type="range" min="0" max="95" value="${saved}"><div class="streamlineHelp">Like Procreate StreamLine: higher values smooth hand wobble and make controlled curves easier.</div>`;
+    const block=d.createElement('div');block.className='streamlineBlock';
+    block.innerHTML=`
+      <div class="label">Drawing assist</div>
+      <div class="rowLabel"><span>StreamLine</span><span id="streamlineVal">${streamSaved}%</span></div>
+      <input id="streamlineControl" type="range" min="0" max="100" value="${streamSaved}">
+      <div class="streamlineHelp">Higher = much steadier lines. 90–100% is best for careful coloring and outlines.</div>
+      <div class="assistGap"></div>
+      <div class="rowLabel"><span>Pressure size</span><span id="pressureSizeVal">${pressureSaved}%</span></div>
+      <input id="pressureSizeControl" type="range" min="0" max="100" value="${pressureSaved}">
+      <div class="rowLabel"><span>Minimum width</span><span id="minWidthVal">${minSaved}%</span></div>
+      <input id="minWidthControl" type="range" min="5" max="50" value="${minSaved}">
+      <div class="streamlineHelp"><strong>Apple Pencil:</strong> light pressure makes the brush slim for tiny areas; firmer pressure grows it smoothly up to your chosen Brush size. Finger drawing keeps the normal selected size.</div>`;
     sizeInput.insertAdjacentElement('afterend',block);
-    const slider=d.getElementById('streamlineControl'),value=d.getElementById('streamlineVal');
-    slider.addEventListener('input',()=>{value.textContent=slider.value+'%';try{w.localStorage.setItem('coolGirlStreamline',slider.value);}catch(_){}});
+
+    const stream=d.getElementById('streamlineControl'),streamVal=d.getElementById('streamlineVal');
+    const pressure=d.getElementById('pressureSizeControl'),pressureVal=d.getElementById('pressureSizeVal');
+    const minWidth=d.getElementById('minWidthControl'),minWidthVal=d.getElementById('minWidthVal');
+    stream.addEventListener('input',()=>{streamVal.textContent=stream.value+'%';try{w.localStorage.setItem('coolGirlStreamlineV3',stream.value);}catch(_){}});
+    pressure.addEventListener('input',()=>{pressureVal.textContent=pressure.value+'%';try{w.localStorage.setItem('coolGirlPressureSize',pressure.value);}catch(_){}});
+    minWidth.addEventListener('input',()=>{minWidthVal.textContent=minWidth.value+'%';try{w.localStorage.setItem('coolGirlMinWidth',minWidth.value);}catch(_){}});
 
     const active=new Set(),states=new Map();
     function currentTool(){
@@ -185,52 +180,70 @@ frame.addEventListener('load',()=>{
       if(d.getElementById('toolErase')?.classList.contains('active')||d.getElementById('mErase')?.classList.contains('active'))return'erase';
       return'paint';
     }
-    function syntheticMove(e,x,y,pressure,buttons){
-      let ev;
-      try{
-        ev=new w.PointerEvent('pointermove',{
-          bubbles:true,cancelable:true,composed:true,
-          pointerId:e.pointerId,pointerType:e.pointerType,isPrimary:e.isPrimary,
-          clientX:x,clientY:y,screenX:e.screenX,screenY:e.screenY,
-          pressure:pressure??e.pressure,width:e.width,height:e.height,
-          tiltX:e.tiltX||0,tiltY:e.tiltY||0,twist:e.twist||0,
-          button:e.button,buttons:buttons??e.buttons
-        });
-      }catch(_){return;}
-      paint.dispatchEvent(ev);
+    function pressureWidth(base,p,type){
+      if(type!=='pen')return base;
+      const amount=+pressure.value/100;if(amount<=0)return base;
+      const min=+minWidth.value/100;
+      const normalized=clamp((p-.02)/.98,0,1);
+      const curve=Math.pow(normalized,.88);
+      const pressureRatio=min+(1-min)*curve;
+      const ratio=1-amount*(1-pressureRatio);
+      return Math.max(1,Math.round(base*ratio));
+    }
+    function makeMove(e,x,y,p,buttons){
+      try{return new w.PointerEvent('pointermove',{
+        bubbles:true,cancelable:true,composed:true,pointerId:e.pointerId,pointerType:e.pointerType,isPrimary:e.isPrimary,
+        clientX:x,clientY:y,screenX:e.screenX,screenY:e.screenY,pressure:p,width:e.width,height:e.height,
+        tiltX:e.tiltX||0,tiltY:e.tiltY||0,twist:e.twist||0,button:e.button,buttons:buttons??e.buttons
+      });}catch(_){return null;}
+    }
+    function dispatchAssistedMove(e,x,y,p,buttons){
+      const ev=makeMove(e,x,y,p,buttons);if(!ev)return;
+      const base=+sizeInput.value,dynamic=pressureWidth(base,p,e.pointerType);
+      sizeInput.value=String(dynamic);
+      try{paint.dispatchEvent(ev);}finally{sizeInput.value=String(base);}
+    }
+    function prepareDownWidth(e,p){
+      if(e.pointerType!=='pen'||+pressure.value<=0)return;
+      const base=+sizeInput.value,dynamic=pressureWidth(base,p,'pen');if(dynamic===base)return;
+      sizeInput.value=String(dynamic);
+      w.queueMicrotask(()=>{if(+sizeInput.value===dynamic)sizeInput.value=String(base);});
     }
 
     paint.addEventListener('pointerdown',e=>{
       if(!e.isTrusted)return;
       active.add(e.pointerId);
-      states.set(e.pointerId,{x:e.clientX,y:e.clientY,pressure:e.pressure>0?e.pressure:.5,buttons:e.buttons||1});
+      const p=e.pointerType==='pen'&&e.pressure>0?e.pressure:.5;
+      states.set(e.pointerId,{sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY,pressure:p,buttons:e.buttons||1});
+      prepareDownWidth(e,p);
       if(active.size>1)states.clear();
     },true);
 
     paint.addEventListener('pointermove',e=>{
       if(!e.isTrusted||!active.has(e.pointerId))return;
-      if(active.size!==1||currentTool()!=='paint'||+slider.value<=0){
-        states.set(e.pointerId,{x:e.clientX,y:e.clientY,pressure:e.pressure>0?e.pressure:.5,buttons:e.buttons||1});
+      const tool=currentTool();
+      if(active.size!==1||tool!=='paint'){
+        states.set(e.pointerId,{sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY,pressure:e.pressure>0?e.pressure:.5,buttons:e.buttons||1});
         return;
       }
       let st=states.get(e.pointerId);
-      if(!st){st={x:e.clientX,y:e.clientY,pressure:e.pressure>0?e.pressure:.5,buttons:e.buttons||1};states.set(e.pointerId,st);return;}
-      const dx=e.clientX-st.x,dy=e.clientY-st.y,dist=Math.hypot(dx,dy),strength=+slider.value/100;
-      // Strong smoothing at slow speeds; catches up more quickly on larger movements to avoid a rubber-band feel.
-      const follow=clamp(1-strength*.72+Math.min(.30,dist/55),.22,1);
-      st.x+=dx*follow;st.y+=dy*follow;
-      st.pressure=e.pressure>0?e.pressure:st.pressure;st.buttons=e.buttons||st.buttons||1;
+      if(!st){st={sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY,pressure:e.pressure>0?e.pressure:.5,buttons:e.buttons||1};states.set(e.pointerId,st);return;}
+      const strength=+stream.value/100;
+      const rawP=e.pointerType==='pen'&&e.pressure>0?e.pressure:st.pressure;
+      const dx=e.clientX-st.sx,dy=e.clientY-st.sy,dist=Math.hypot(dx,dy);
+      const a=strength<=0?1:clamp(1-strength*.90+Math.min(.22,dist/85),.075,1);
+      st.sx+=dx*a;st.sy+=dy*a;
+      const b=strength<=0?1:clamp(a*.92,.065,1);
+      st.x+=(st.sx-st.x)*b;st.y+=(st.sy-st.y)*b;
+      st.pressure+=(rawP-st.pressure)*.30;st.buttons=e.buttons||st.buttons||1;
+      const needsAssist=strength>0||(e.pointerType==='pen'&&+pressure.value>0);
+      if(!needsAssist)return;
       e.preventDefault();e.stopImmediatePropagation();
-      syntheticMove(e,st.x,st.y,st.pressure,st.buttons);
+      dispatchAssistedMove(e,st.x,st.y,st.pressure,st.buttons);
     },true);
 
     paint.addEventListener('pointerup',e=>{
       if(!e.isTrusted)return;
-      const st=states.get(e.pointerId);
-      if(active.size===1&&st&&currentTool()==='paint'&&+slider.value>0){
-        const gap=Math.hypot(e.clientX-st.x,e.clientY-st.y);
-        if(gap>.6)syntheticMove(e,e.clientX,e.clientY,st.pressure,1);
-      }
       states.delete(e.pointerId);active.delete(e.pointerId);
     },true);
     paint.addEventListener('pointercancel',e=>{states.delete(e.pointerId);active.delete(e.pointerId);},true);
@@ -240,24 +253,19 @@ frame.addEventListener('load',()=>{
     if(!d.getElementById('palette')||!buttons().length)return false;
     const h1=d.querySelector('h1');if(h1)h1.textContent='Color Sketchbook — Cool Girl & Cat';
     d.title='Color Sketchbook — Cool Girl & Cat';
-    lockHidden();paintSwatches();
-    cleanGuideBlackFills();
-    installCleanCanvas();
-    installTouchUndoRedo();
-    installStreamLine();
+    lockHidden();paintSwatches();cleanGuideBlackFills();installCleanCanvas();installTouchUndoRedo();installStreamLine();
     buttons().forEach((b,n)=>{if(COLORS[n])b.addEventListener('click',()=>w.setTimeout(()=>forceColor(n),0));});
     const obs=new w.MutationObserver(()=>w.queueMicrotask(syncSelection));
     obs.observe(d.getElementById('palette'),{subtree:true,attributes:true,attributeFilter:['class','disabled']});
     ['clear','undo','redo'].forEach(id=>d.getElementById(id)?.addEventListener('click',()=>w.setTimeout(lockHidden,0)));
     const first=buttons()[1];if(first&&!first.disabled){first.click();w.setTimeout(()=>forceColor(1),0);lastSelected=1;}
-    const diag=d.getElementById('diag');if(diag)diag.textContent='Ready — line-only sketch, no grid. StreamLine stabilization active. Two-finger tap Undo; three-finger tap Redo.';
+    const diag=d.getElementById('diag');if(diag)diag.textContent='Ready — strong StreamLine + Apple Pencil pressure size active. Light pressure = slim detail; firm pressure = wide.';
     return true;
   }
 
   let tries=0;
   const timer=w.setInterval(()=>{
-    tries++;
-    const diag=d.getElementById('diag');
+    tries++;const diag=d.getElementById('diag');
     if(diag&&/Ready/i.test(diag.textContent)&&install()){w.clearInterval(timer);return;}
     if(tries>240)w.clearInterval(timer);
   },50);
