@@ -9,8 +9,8 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f7f4ed}#ap
 </style>
 </head>
 <body>
-<iframe id="app" src="./demo.html?soundhost=velocity-sync-20260815b" title="Color Sketchbook with pencil sound"></iframe>
-<audio id="pencilAudio" preload="auto" loop playsinline src="./pencil-scratch-loop.mp3?build=velocity-sync-20260815b"></audio>
+<iframe id="app" src="./demo.html?soundhost=velocity-sync-20260815c" title="Color Sketchbook with pencil sound"></iframe>
+<audio id="pencilAudio" preload="auto" loop playsinline src="./pencil-scratch-loop.mp3?build=velocity-sync-20260815c"></audio>
 <script>
 (()=>{'use strict';
 const frame=document.getElementById('app');
@@ -89,7 +89,6 @@ function install(d,w,paint,tools){
     const speed01=clamp(smoothSpeed/.90,0,1);
     const pressure=e.pointerType==='pen'?clamp(e.pressure||.08,.04,1):.45;
 
-    // Audio work is throttled and happens after the app's own drawing listener.
     if(now-lastAudioUpdate>=12){
       lastAudioUpdate=now;
       const base=+volume.value/100;
@@ -107,7 +106,6 @@ function install(d,w,paint,tools){
   toggle.addEventListener('change',()=>{try{w.localStorage.setItem('pencilSoundEnabled',toggle.checked?'1':'0')}catch(_){}if(!toggle.checked)stop()});
   volume.addEventListener('input',()=>{value.textContent=volume.value+'%';try{w.localStorage.setItem('pencilSoundVolume',volume.value)}catch(_){}});
 
-  // Bubble/passive listeners are intentional: the coloring app processes the Pencil event first.
   paint.addEventListener('pointerdown',start,passive);
   paint.addEventListener('pointermove',move,passive);
   paint.addEventListener('pointerup',e=>{if(e.pointerId===activePointer)stop()},passive);
