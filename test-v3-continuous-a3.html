@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Acrylic v3 — Continuous Join Test A3</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5f2eb}
+#ce822{display:block;width:100%;height:100%;border:0;background:#f5f2eb}
+</style>
+</head>
+<body>
+<iframe id="ce822" src="./test-v3-ce822.html" title="Acrylic v3 ce822 continuous mask join test"></iframe>
+<script>
+(() => {
+'use strict';
+const host=document.getElementById('ce822');
+host.addEventListener('load',()=>{
+  let d;
+  try{d=host.contentDocument;}catch(_){return;}
+  const app=d&&d.getElementById('app');
+  if(!app)return;
+  const target='./brush-test-v3-continuous-a3.html';
+  if(app.getAttribute('src')!==target)app.setAttribute('src',target);
+});
+})();
+</script>
+</body>
+</html>
