@@ -9,13 +9,16 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f7f4ed}#ap
 </style>
 </head>
 <body>
-<iframe id="app" src="./demo.html?soundhost=movement-sync-20260815" title="Color Sketchbook with pencil sound"></iframe>
-<audio id="pencilAudioTemplate" preload="auto" playsinline src="./pencil-scratch-loop.mp3?build=movement-sync-20260815"></audio>
+<iframe id="app" src="./demo.html?soundhost=velocity-sync-light-20260815" title="Color Sketchbook with pencil sound"></iframe>
+<audio id="pencilAudio" preload="auto" loop playsinline src="./pencil-scratch-loop.mp3?build=velocity-sync-light-20260815"></audio>
 <script>
 (()=>{'use strict';
 const frame=document.getElementById('app');
-const template=document.getElementById('pencilAudioTemplate');
-const AUDIO_SRC=template.currentSrc||template.src;
+const audio=document.getElementById('pencilAudio');
+audio.setAttribute('playsinline','');
+audio.setAttribute('webkit-playsinline','');
+audio.preservesPitch=false;
+audio.webkitPreservesPitch=false;
 
 frame.addEventListener('load',()=>{
   let d,w;try{d=frame.contentDocument;w=frame.contentWindow}catch(_){return}if(!d||!w)return;
@@ -40,100 +43,75 @@ function install(d,w,paint,tools){
     <label class="cursorSetting"><span>✏️ Pencil scratch</span><input id="pencilSoundToggle" type="checkbox" checked></label>
     <div class="rowLabel" style="margin-top:9px"><span>Sound volume</span><span id="pencilSoundVal">72%</span></div>
     <input id="pencilSoundVolume" type="range" min="0" max="100" value="72">
-    <button id="pencilSoundTest" type="button" style="width:100%;margin-top:9px">✏️ Test movement sound</button>
-    <div class="help">The real pencil recording is now cut into tiny scratch grains triggered by actual Pencil travel. Stop moving = silence. Faster strokes = tighter, quicker scratches.</div>`;
+    <button id="pencilSoundTest" type="button" style="width:100%;margin-top:9px">✏️ Test pencil sound</button>
+    <div class="help">Lightweight velocity sync: the drawing loop is untouched. Pencil speed changes only the sound playback speed and loudness. Stop moving = silence.</div>`;
   tools.insertBefore(box,anchor);
 
   const toggle=$('pencilSoundToggle'),volume=$('pencilSoundVolume'),value=$('pencilSoundVal'),test=$('pencilSoundTest');
-  const POOL_SIZE=6,pool=[];
-  for(let i=0;i<POOL_SIZE;i++){
-    const a=new Audio(AUDIO_SRC);a.preload='auto';a.playsInline=true;a.loop=false;
-    a.setAttribute('playsinline','');a.setAttribute('webkit-playsinline','');
-    a.preservesPitch=false;a.webkitPreservesPitch=false;
-    pool.push(a);a.load();
-  }
-
-  let drawing=false,activePointer=null,lastX=0,lastY=0,lastT=0,lastVX=0,lastVY=0;
-  let distanceCarry=0,poolIndex=0,lastGrainTime=0,grainSerial=0,testTimers=[];
+  let drawing=false,activePointer=null,lastX=0,lastY=0,lastT=0,smoothSpeed=0,silenceTimer=0,rafPending=false,pendingVolume=0,pendingRate=1;
 
   try{
     const saved=w.localStorage.getItem('pencilSoundEnabled');if(saved==='0')toggle.checked=false;
     const v=w.localStorage.getItem('pencilSoundVolume');if(v!==null&&Number.isFinite(+v))volume.value=String(clamp(+v,0,100));
   }catch(_){}
   value.textContent=volume.value+'%';
+  audio.volume=0;
+  audio.playbackRate=1;
 
   function isPaint(){return $('toolPaint')?.classList.contains('active')||$('mPaint')?.classList.contains('active')}
-  function clearTest(){testTimers.forEach(id=>w.clearTimeout(id));testTimers=[]}
-  function silence(){
-    clearTest();
-    for(const a of pool){try{a.pause()}catch(_){}a.volume=0}
+  function cancelSilence(){if(silenceTimer){w.clearTimeout(silenceTimer);silenceTimer=0}}
+  function applyAudio(){
+    rafPending=false;
+    if(!drawing||!toggle.checked||!isPaint()){audio.volume=0;return}
+    audio.playbackRate=pendingRate;
+    audio.volume=pendingVolume;
   }
-  function sourceOffset(a,serial){
-    const dur=Number.isFinite(a.duration)&&a.duration>0?a.duration:1.05;
-    const usable=Math.max(.10,dur-.22);
-    const positions=[.05,.17,.29,.41,.53,.11,.35,.23];
-    return Math.min(Math.max(.02,positions[serial%positions.length]),usable);
+  function scheduleAudio(level,rate){
+    pendingVolume=clamp(level,0,1);
+    pendingRate=clamp(rate,.55,2.05);
+    if(!rafPending){rafPending=true;w.requestAnimationFrame(applyAudio)}
   }
-  function grainDuration(speed){return Math.round(64-speed*24)}
-  function triggerGrain(speed,pressure,turnAmount=0){
-    if(!toggle.checked)return;
-    const now=performance.now();
-    const minGap=clamp(31-speed*16,13,31);
-    if(now-lastGrainTime<minGap)return;
-    lastGrainTime=now;
-
-    const a=pool[poolIndex++%pool.length],serial=grainSerial++;
-    try{a.pause();a.currentTime=sourceOffset(a,serial)}catch(_){}
-    const base=+volume.value/100;
-    const strength=base*(.24+.38*speed)*(.78+.34*pressure)*(1+Math.min(.10,turnAmount*.06));
-    a.volume=clamp(strength,0,1);
-    a.playbackRate=clamp(.88+speed*.48+pressure*.05,.86,1.42);
-    try{a.preservesPitch=false;a.webkitPreservesPitch=false}catch(_){}
-    const p=a.play();if(p&&p.catch)p.catch(()=>{});
-    const id=w.setTimeout(()=>{try{a.pause()}catch(_){}},grainDuration(speed));
-    testTimers.push(id);
-  }
-  function primeAudio(){
-    // iPad Safari: unlock the pool from the trusted Pencil-down gesture.
-    for(const a of pool){
-      a.volume=0;
-      const p=a.play();
-      if(p&&p.then)p.then(()=>{a.pause();try{a.currentTime=0}catch(_){}}).catch(()=>{});
+  function startAudioFromGesture(){
+    audio.volume=0;
+    if(audio.paused){
+      const p=audio.play();
+      if(p&&p.catch)p.catch(()=>{});
     }
   }
   function stop(){
-    drawing=false;activePointer=null;distanceCarry=0;lastVX=0;lastVY=0;silence();
+    drawing=false;activePointer=null;smoothSpeed=0;cancelSilence();
+    audio.volume=0;
+    // Pause only after the stroke ends; never start/stop repeatedly during pointermove.
+    try{audio.pause()}catch(_){}
   }
   function start(e){
     if(!toggle.checked||!isPaint())return;
-    clearTest();primeAudio();
-    drawing=true;activePointer=e.pointerId;lastX=e.clientX;lastY=e.clientY;lastT=performance.now();
-    distanceCarry=0;lastVX=0;lastVY=0;lastGrainTime=0;
-    // Deliberately no sound on pointer-down. Sound begins only when the Pencil actually travels.
+    cancelSilence();
+    drawing=true;activePointer=e.pointerId;lastX=e.clientX;lastY=e.clientY;lastT=performance.now();smoothSpeed=0;
+    startAudioFromGesture();
   }
   function move(e){
     if(!drawing||e.pointerId!==activePointer||!toggle.checked||!isPaint())return;
-    const now=performance.now(),dx=e.clientX-lastX,dy=e.clientY-lastY,dist=Math.hypot(dx,dy),dt=Math.max(3,now-lastT);
+    const now=performance.now(),dx=e.clientX-lastX,dy=e.clientY-lastY,dist=Math.hypot(dx,dy),dt=Math.max(4,now-lastT);
     lastX=e.clientX;lastY=e.clientY;lastT=now;
-    if(dist<.18)return;
+    if(dist<.08)return;
 
-    const pxPerFrame=dist/(dt/16.7);
-    const speed=clamp(pxPerFrame/16,0,1);
+    // px/ms from the actual Pencil event stream. This is read-only: it never changes drawing coordinates or timing.
+    const rawSpeed=dist/dt;
+    smoothSpeed=smoothSpeed*.58+rawSpeed*.42;
+    const speed01=clamp((smoothSpeed-.015)/.85,0,1);
     const pressure=e.pointerType==='pen'?clamp(e.pressure||.08,.04,1):.45;
-    const mag=Math.max(.001,dist),vx=dx/mag,vy=dy/mag;
-    let turnAmount=0;
-    if(lastVX||lastVY)turnAmount=1-clamp(vx*lastVX+vy*lastVY,-1,1);
-    lastVX=vx;lastVY=vy;
+    const base=+volume.value/100;
 
-    distanceCarry+=dist;
-    // Grain spacing is based on physical Pencil travel, not timer time.
-    const spacing=clamp(5.4-speed*2.8-pressure*.45,2.1,5.4);
-    let fired=0;
-    while(distanceCarry>=spacing&&fired<3){
-      distanceCarry-=spacing;
-      triggerGrain(speed,pressure,turnAmount);
-      fired++;
-    }
+    // Sound speed follows Pencil speed continuously: very slow stroke ~0.58x, normal ~1x, fast up to ~2x.
+    const rate=.58+speed01*1.42;
+    const level=base*(.16+.52*speed01)*(.78+.22*pressure);
+    scheduleAudio(level,rate);
+
+    cancelSilence();
+    silenceTimer=w.setTimeout(()=>{
+      if(drawing){smoothSpeed=0;scheduleAudio(0,.58)}
+    },48);
   }
 
   toggle.addEventListener('change',()=>{try{w.localStorage.setItem('pencilSoundEnabled',toggle.checked?'1':'0')}catch(_){}if(!toggle.checked)stop()});
@@ -147,15 +125,16 @@ function install(d,w,paint,tools){
 
   test.addEventListener('click',()=>{
     if(!toggle.checked){toggle.checked=true;toggle.dispatchEvent(new w.Event('change',{bubbles:true}))}
-    silence();primeAudio();lastGrainTime=0;
-    // Simulate a slow stroke accelerating, then slowing again, using the exact same grain engine.
-    const speeds=[.18,.22,.28,.34,.42,.52,.64,.76,.88,.94,.84,.72,.58,.44,.32,.24];
-    speeds.forEach((s,i)=>{
-      const id=w.setTimeout(()=>triggerGrain(s,.48,0),i*55);testTimers.push(id);
-    });
+    cancelSilence();
+    try{audio.pause();audio.currentTime=0}catch(_){}
+    audio.volume=(+volume.value/100)*.42;
+    audio.playbackRate=1;
+    const p=audio.play();if(p&&p.catch)p.catch(()=>{});
+    silenceTimer=w.setTimeout(()=>{audio.volume=0;try{audio.pause()}catch(_){}},1000);
   });
 
-  const diag=$('diag');if(diag)diag.textContent=(diag.textContent?diag.textContent+' ':'')+'Pencil sound is distance-synced to drawing movement.';
+  audio.load();
+  const diag=$('diag');if(diag)diag.textContent=(diag.textContent?diag.textContent+' ':'')+'Lightweight sound sync active; drawing speed is not modified by audio.';
 }
 })();
 </script>
