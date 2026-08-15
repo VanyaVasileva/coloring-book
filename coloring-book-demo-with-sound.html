@@ -9,7 +9,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f7f4ed}#ap
 </style>
 </head>
 <body>
-<iframe id="app" src="./demo.html?soundhost=20260815b" title="Color Sketchbook with pencil sound"></iframe>
+<iframe id="app" src="./demo.html?soundhost=20260815c" title="Color Sketchbook with pencil sound"></iframe>
 <script>
 (()=>{'use strict';
 const frame=document.getElementById('app');
@@ -38,7 +38,7 @@ function install(d,w,paint,tools){
     <div class="rowLabel" style="margin-top:9px"><span>Sound volume</span><span id="pencilSoundVal">100%</span></div>
     <input id="pencilSoundVolume" type="range" min="0" max="100" value="100">
     <button id="pencilSoundTest" type="button" style="width:100%;margin-top:9px">✏️ Test pencil sound</button>
-    <div class="help">Darker graphite-on-paper friction. Less hiss, centered sound. It follows drawing speed and Apple Pencil pressure and stops when the Pencil lifts.</div>`;
+    <div class="help">Deep graphite-on-paper sound with a subtle paper-grain scratch. Centered, not wide stereo. It follows drawing speed and Apple Pencil pressure.</div>`;
   tools.insertBefore(box,anchor);
 
   const toggle=$('pencilSoundToggle'),volume=$('pencilSoundVolume'),value=$('pencilSoundVal'),test=$('pencilSoundTest');
@@ -52,7 +52,7 @@ function install(d,w,paint,tools){
   toggle.addEventListener('change',()=>{try{w.localStorage.setItem('pencilSoundEnabled',toggle.checked?'1':'0')}catch(_){}if(!toggle.checked)stopSound(true)});
   volume.addEventListener('input',()=>{value.textContent=volume.value+'%';try{w.localStorage.setItem('pencilSoundVolume',volume.value)}catch(_){}});
 
-  let ac=null,source=null,master=null,lowpass=null,scratchFilter=null,bodyFilter=null,scratchGain=null,bodyGain=null,compressor=null,center=null,fadeTimer=0;
+  let ac=null,source=null,master=null,lowpass=null,scratchFilter=null,grainFilter=null,bodyFilter=null,scratchGain=null,grainGain=null,bodyGain=null,compressor=null,center=null,fadeTimer=0;
   const pointers=new Map();
 
   function isPaint(){return $('toolPaint')?.classList.contains('active')||$('mPaint')?.classList.contains('active')}
@@ -66,22 +66,25 @@ function install(d,w,paint,tools){
       const white=Math.random()*2-1;
       brown=brown*.985+white*.015;
       slow=slow*.997+white*.003;
-      data[i]=brown*.88+slow*.42+white*.06;
+      data[i]=brown*.86+slow*.40+white*.09;
     }
     source=ac.createBufferSource();source.buffer=buffer;source.loop=true;
 
     const high=ac.createBiquadFilter();high.type='highpass';high.frequency.value=75;high.Q.value=.55;
-    lowpass=ac.createBiquadFilter();lowpass.type='lowpass';lowpass.frequency.value=1650;lowpass.Q.value=.5;
-    scratchFilter=ac.createBiquadFilter();scratchFilter.type='bandpass';scratchFilter.frequency.value=760;scratchFilter.Q.value=.62;
+    lowpass=ac.createBiquadFilter();lowpass.type='lowpass';lowpass.frequency.value=1850;lowpass.Q.value=.5;
+    scratchFilter=ac.createBiquadFilter();scratchFilter.type='bandpass';scratchFilter.frequency.value=820;scratchFilter.Q.value=.8;
+    grainFilter=ac.createBiquadFilter();grainFilter.type='bandpass';grainFilter.frequency.value=1500;grainFilter.Q.value=1.25;
     bodyFilter=ac.createBiquadFilter();bodyFilter.type='bandpass';bodyFilter.frequency.value=240;bodyFilter.Q.value=.74;
-    scratchGain=ac.createGain();scratchGain.gain.value=.34;
-    bodyGain=ac.createGain();bodyGain.gain.value=.72;
+    scratchGain=ac.createGain();scratchGain.gain.value=.38;
+    grainGain=ac.createGain();grainGain.gain.value=.065;
+    bodyGain=ac.createGain();bodyGain.gain.value=.70;
     master=ac.createGain();master.gain.value=0;
     compressor=ac.createDynamicsCompressor();compressor.threshold.value=-28;compressor.knee.value=20;compressor.ratio.value=3;compressor.attack.value=.008;compressor.release.value=.09;
     center=ac.createStereoPanner?ac.createStereoPanner():null;if(center)center.pan.value=0;
 
     source.connect(high);high.connect(lowpass);
     lowpass.connect(scratchFilter);scratchFilter.connect(scratchGain);scratchGain.connect(master);
+    lowpass.connect(grainFilter);grainFilter.connect(grainGain);grainGain.connect(master);
     lowpass.connect(bodyFilter);bodyFilter.connect(bodyGain);bodyGain.connect(master);
     master.connect(compressor);
     if(center){compressor.connect(center);center.connect(ac.destination)}else compressor.connect(ac.destination);
@@ -111,11 +114,13 @@ function install(d,w,paint,tools){
     const frameScale=Math.max(.25,dt/16.7),speed=clamp(distance/frameScale/20,0,1),p=type==='pen'?clamp(pressure||.08,.04,1):.44,vol=+volume.value/100;
     const level=vol*(.009+.034*speed)*(.72+.46*p),now=a.currentTime;
     master.gain.cancelScheduledValues(now);master.gain.setTargetAtTime(level,now,.012);
-    lowpass.frequency.setTargetAtTime(1150+speed*750+p*180,now,.035);
-    scratchFilter.frequency.setTargetAtTime(560+speed*620+p*130,now,.028);
+    lowpass.frequency.setTargetAtTime(1300+speed*850+p*170,now,.035);
+    scratchFilter.frequency.setTargetAtTime(650+speed*700+p*120,now,.028);
+    grainFilter.frequency.setTargetAtTime(1350+speed*500+p*90,now,.03);
     bodyFilter.frequency.setTargetAtTime(175+p*260+speed*70,now,.035);
-    scratchGain.gain.setTargetAtTime(.24+speed*.22,now,.03);
-    bodyGain.gain.setTargetAtTime(.68+p*.18,now,.035);
+    scratchGain.gain.setTargetAtTime(.28+speed*.25,now,.03);
+    grainGain.gain.setTargetAtTime(.045+speed*.055,now,.03);
+    bodyGain.gain.setTargetAtTime(.66+p*.18,now,.035);
     if(fadeTimer)w.clearTimeout(fadeTimer);
     fadeTimer=w.setTimeout(()=>stopSound(false),82);
   }
@@ -150,7 +155,7 @@ function install(d,w,paint,tools){
   });
 
   const diag=$('diag');
-  if(diag)diag.textContent=(diag.textContent?diag.textContent+' ':'')+'Deep centered graphite pencil sound enabled.';
+  if(diag)diag.textContent=(diag.textContent?diag.textContent+' ':'')+'Deep centered graphite sound with subtle scratch texture enabled.';
 }
 })();
 </script>
