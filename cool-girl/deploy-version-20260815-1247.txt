@@ -1,0 +1,1 @@
+Deploy the current direct-image Cool Girl demo. Includes demo commit 8af9159c80ec3b853b6e2152f7a46b6b04420561.
