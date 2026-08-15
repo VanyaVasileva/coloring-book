@@ -30,16 +30,16 @@ frame.addEventListener('load',()=>{
   function lockHidden(){
     buttons().forEach((b,n)=>{
       if(HIDDEN.has(n)){
-        if(!b.disabled)b.disabled=true;
-        if(b.style.display!=='none')b.style.display='none';
+        b.disabled=true;b.style.display='none';
+      }else if(COLORS[n]){
+        b.disabled=false;b.classList.remove('done');
       }
     });
   }
 
   function paintSwatches(){
     buttons().forEach((b,n)=>{
-      const hex=COLORS[n];
-      if(!hex)return;
+      const hex=COLORS[n];if(!hex)return;
       b.style.background=hex;
       const dark=isDark(hex);if(b.classList.contains('dark')!==dark)b.classList.toggle('dark',dark);
       const h=b.querySelector('.hex');if(h&&h.textContent!==hex)h.textContent=hex;
@@ -96,6 +96,8 @@ frame.addEventListener('load',()=>{
       #highlight{display:none!important;opacity:0!important;visibility:hidden!important}
       .guideControl{display:none!important}
       #paint{mix-blend-mode:normal!important}
+      .swatch .pct{display:none!important}
+      .swatch.done::after{display:none!important}
       .streamlineBlock{margin-top:12px;padding-top:2px}
       .streamlineBlock .streamlineHelp{font-size:10px;line-height:1.4;color:var(--muted);margin-top:5px}
       .streamlineBlock .assistGap{height:8px}
@@ -103,7 +105,7 @@ frame.addEventListener('load',()=>{
     d.head.appendChild(style);
     const paint=d.getElementById('paint');if(paint){paint.style.mixBlendMode='normal';paint.style.zIndex='3';}
     const highlight=d.getElementById('highlight');if(highlight){highlight.style.display='none';highlight.style.opacity='0';highlight.style.visibility='hidden';}
-    const nav=d.querySelector('.navHint');if(nav)nav.innerHTML='<strong>Navigation:</strong> one finger or Apple Pencil paints. Pinch with two fingers to move/zoom. Tap with two fingers to Undo; tap with three fingers to Redo.';
+    const nav=d.querySelector('.navHint');if(nav)nav.innerHTML='<strong>Navigation:</strong> one finger or Apple Pencil paints/fills. Pinch with two fingers to move/zoom. Tap with two fingers to Undo; tap with three fingers to Redo.';
     const exportBtn=d.getElementById('exportBtn');
     if(exportBtn){
       exportBtn.addEventListener('click',e=>{
@@ -142,8 +144,8 @@ frame.addEventListener('load',()=>{
   }
 
   function installStreamLine(){
-    const paint=d.getElementById('paint'),sizeInput=d.getElementById('size');
-    if(!paint||!sizeInput||d.getElementById('streamlineControl'))return;
+    const paint=d.getElementById('paint'),sizeInput=d.getElementById('size'),opacityInput=d.getElementById('opacity');
+    if(!paint||!sizeInput||!opacityInput||d.getElementById('streamlineControl'))return;
 
     let streamSaved=94,pressureSaved=100,minSaved=12;
     try{
@@ -183,19 +185,11 @@ frame.addEventListener('load',()=>{
     function pressureWidth(base,p,type){
       if(type!=='pen')return base;
       const amount=+pressure.value/100;if(amount<=0)return base;
-      const min=+minWidth.value/100;
-      const normalized=clamp((p-.02)/.98,0,1);
-      const curve=Math.pow(normalized,.88);
-      const pressureRatio=min+(1-min)*curve;
-      const ratio=1-amount*(1-pressureRatio);
-      return Math.max(1,Math.round(base*ratio));
+      const min=+minWidth.value/100,normalized=clamp((p-.02)/.98,0,1),curve=Math.pow(normalized,.88),pressureRatio=min+(1-min)*curve;
+      return Math.max(1,Math.round(base*(1-amount*(1-pressureRatio))));
     }
     function makeMove(e,x,y,p,buttons){
-      try{return new w.PointerEvent('pointermove',{
-        bubbles:true,cancelable:true,composed:true,pointerId:e.pointerId,pointerType:e.pointerType,isPrimary:e.isPrimary,
-        clientX:x,clientY:y,screenX:e.screenX,screenY:e.screenY,pressure:p,width:e.width,height:e.height,
-        tiltX:e.tiltX||0,tiltY:e.tiltY||0,twist:e.twist||0,button:e.button,buttons:buttons??e.buttons
-      });}catch(_){return null;}
+      try{return new w.PointerEvent('pointermove',{bubbles:true,cancelable:true,composed:true,pointerId:e.pointerId,pointerType:e.pointerType,isPrimary:e.isPrimary,clientX:x,clientY:y,screenX:e.screenX,screenY:e.screenY,pressure:p,width:e.width,height:e.height,tiltX:e.tiltX||0,tiltY:e.tiltY||0,twist:e.twist||0,button:e.button,buttons:buttons??e.buttons});}catch(_){return null;}
     }
     function dispatchAssistedMove(e,x,y,p,buttons){
       const ev=makeMove(e,x,y,p,buttons);if(!ev)return;
@@ -203,19 +197,19 @@ frame.addEventListener('load',()=>{
       sizeInput.value=String(dynamic);
       try{paint.dispatchEvent(ev);}finally{sizeInput.value=String(base);}
     }
-    function prepareDownWidth(e,p){
-      if(e.pointerType!=='pen'||+pressure.value<=0)return;
-      const base=+sizeInput.value,dynamic=pressureWidth(base,p,'pen');if(dynamic===base)return;
-      sizeInput.value=String(dynamic);
-      w.queueMicrotask(()=>{if(+sizeInput.value===dynamic)sizeInput.value=String(base);});
-    }
 
     paint.addEventListener('pointerdown',e=>{
       if(!e.isTrusted)return;
       active.add(e.pointerId);
-      const p=e.pointerType==='pen'&&e.pressure>0?e.pressure:.5;
+      const p=e.pointerType==='pen'&&e.pressure>0?e.pressure:.03;
       states.set(e.pointerId,{sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY,pressure:p,buttons:e.buttons||1});
-      prepareDownWidth(e,p);
+      // Core used to paint a round dot immediately on Pencil-down. Make that first dot transparent;
+      // the first visible mark is now the stabilized moving stroke.
+      if(e.pointerType==='pen'&&currentTool()==='paint'){
+        const originalOpacity=opacityInput.value;
+        opacityInput.value='0';
+        w.queueMicrotask(()=>{opacityInput.value=originalOpacity;});
+      }
       if(active.size>1)states.clear();
     },true);
 
@@ -227,39 +221,165 @@ frame.addEventListener('load',()=>{
         return;
       }
       let st=states.get(e.pointerId);
-      if(!st){st={sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY,pressure:e.pressure>0?e.pressure:.5,buttons:e.buttons||1};states.set(e.pointerId,st);return;}
-      const strength=+stream.value/100;
-      const rawP=e.pointerType==='pen'&&e.pressure>0?e.pressure:st.pressure;
+      if(!st){st={sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY,pressure:e.pressure>0?e.pressure:.03,buttons:e.buttons||1};states.set(e.pointerId,st);return;}
+      const strength=+stream.value/100,rawP=e.pointerType==='pen'&&e.pressure>0?e.pressure:st.pressure;
       const dx=e.clientX-st.sx,dy=e.clientY-st.sy,dist=Math.hypot(dx,dy);
       const a=strength<=0?1:clamp(1-strength*.90+Math.min(.22,dist/85),.075,1);
       st.sx+=dx*a;st.sy+=dy*a;
       const b=strength<=0?1:clamp(a*.92,.065,1);
       st.x+=(st.sx-st.x)*b;st.y+=(st.sy-st.y)*b;
       st.pressure+=(rawP-st.pressure)*.30;st.buttons=e.buttons||st.buttons||1;
-      const needsAssist=strength>0||(e.pointerType==='pen'&&+pressure.value>0);
-      if(!needsAssist)return;
+      const needsAssist=strength>0||(e.pointerType==='pen'&&+pressure.value>0);if(!needsAssist)return;
       e.preventDefault();e.stopImmediatePropagation();
       dispatchAssistedMove(e,st.x,st.y,st.pressure,st.buttons);
     },true);
 
+    paint.addEventListener('pointerup',e=>{if(!e.isTrusted)return;states.delete(e.pointerId);active.delete(e.pointerId);},true);
+    paint.addEventListener('pointercancel',e=>{states.delete(e.pointerId);active.delete(e.pointerId);},true);
+  }
+
+  function installBucketFillAndHistory(){
+    const paint=d.getElementById('paint'),guide=d.getElementById('guideCanvas'),undo=d.getElementById('undo'),redo=d.getElementById('redo'),clear=d.getElementById('clear'),status=d.getElementById('status');
+    if(!paint||!guide||!undo||!redo||paint.dataset.realBucketFill==='1')return;
+    paint.dataset.realBucketFill='1';
+    const pctx=paint.getContext('2d'),gctx=guide.getContext('2d',{willReadFrequently:true});
+    const MAX=24,history=[],future=[],active=new Set(),tracking=new Map();
+    let beforeAction=null,hadMulti=false,barrier=null,barrierW=0,barrierH=0;
+
+    function currentTool(){
+      if(d.getElementById('toolFill')?.classList.contains('active')||d.getElementById('mFill')?.classList.contains('active'))return'fill';
+      if(d.getElementById('toolErase')?.classList.contains('active')||d.getElementById('mErase')?.classList.contains('active'))return'erase';
+      if(d.getElementById('toolMove')?.classList.contains('active')||d.getElementById('mMove')?.classList.contains('active'))return'move';
+      return'paint';
+    }
+    function snap(){const c=d.createElement('canvas');c.width=paint.width;c.height=paint.height;c.getContext('2d').drawImage(paint,0,0);return c;}
+    function restore(c){pctx.clearRect(0,0,paint.width,paint.height);pctx.drawImage(c,0,0);}
+    function push(c){if(!c)return;history.push(c);if(history.length>MAX)history.shift();future.length=0;}
+    function canvasPoint(e){const r=paint.getBoundingClientRect();return{x:clamp(Math.round((e.clientX-r.left)*paint.width/r.width),0,paint.width-1),y:clamp(Math.round((e.clientY-r.top)*paint.height/r.height),0,paint.height-1)};}
+
+    function buildBarrier(){
+      if(barrier&&barrierW===guide.width&&barrierH===guide.height)return barrier;
+      const W=guide.width,H=guide.height,N=W*H,img=gctx.getImageData(0,0,W,H).data;
+      let b=new Uint8Array(N);
+      for(let i=0,p=0;i<img.length;i+=4,p++){
+        if(img[i+3]>20){const lum=.299*img[i]+.587*img[i+1]+.114*img[i+2];if(lum<185)b[p]=1;}
+      }
+      // Slightly thicken the linework only for bucket-boundary detection so anti-aliased gaps do not leak.
+      for(let pass=0;pass<2;pass++){
+        const n=b.slice();
+        for(let y=1;y<H-1;y++){
+          let i=y*W+1;
+          for(let x=1;x<W-1;x++,i++)if(b[i]){
+            n[i-1]=n[i+1]=n[i-W]=n[i+W]=1;
+            n[i-W-1]=n[i-W+1]=n[i+W-1]=n[i+W+1]=1;
+          }
+        }
+        b=n;
+      }
+      barrier=b;barrierW=W;barrierH=H;return b;
+    }
+
+    function openSeed(b,x,y,W,H){
+      const idx=y*W+x;if(!b[idx])return idx;
+      for(let r=1;r<=10;r++){
+        for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+          if(Math.abs(dx)!==r&&Math.abs(dy)!==r)continue;
+          const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=W||yy>=H)continue;
+          const j=yy*W+xx;if(!b[j])return j;
+        }
+      }
+      return-1;
+    }
+
+    function bucketAt(pt){
+      const W=paint.width,H=paint.height,N=W*H,b=buildBarrier(),seed=openSeed(b,pt.x,pt.y,W,H);
+      if(seed<0){if(status)status.textContent='Fill: tap inside an outlined area, not directly on the black line.';return false;}
+      const seen=new Uint8Array(N),queue=new Int32Array(N);let head=0,tail=1;queue[0]=seed;seen[seed]=1;
+      let minX=seed%W,maxX=minX,minY=(seed/W)|0,maxY=minY;
+      while(head<tail){
+        const idx=queue[head++],x=idx%W,y=(idx/W)|0;
+        if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;
+        let j;
+        if(x>0){j=idx-1;if(!b[j]&&!seen[j]){seen[j]=1;queue[tail++]=j;}}
+        if(x<W-1){j=idx+1;if(!b[j]&&!seen[j]){seen[j]=1;queue[tail++]=j;}}
+        if(y>0){j=idx-W;if(!b[j]&&!seen[j]){seen[j]=1;queue[tail++]=j;}}
+        if(y<H-1){j=idx+W;if(!b[j]&&!seen[j]){seen[j]=1;queue[tail++]=j;}}
+      }
+      if(!tail)return false;
+      const bw=maxX-minX+1,bh=maxY-minY+1,tmp=d.createElement('canvas');tmp.width=bw;tmp.height=bh;
+      const t=tmp.getContext('2d'),img=t.createImageData(bw,bh),data=img.data;
+      const hex=(d.getElementById('customColor')?.value||'#000000').replace('#',''),r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),bl=parseInt(hex.slice(4,6),16);
+      for(let i=0;i<tail;i++){
+        const idx=queue[i],x=idx%W,y=(idx/W)|0,o=((y-minY)*bw+(x-minX))*4;
+        data[o]=r;data[o+1]=g;data[o+2]=bl;data[o+3]=255;
+      }
+      t.putImageData(img,0,0);
+      pctx.save();pctx.globalCompositeOperation='source-over';pctx.globalAlpha=+(d.getElementById('opacity')?.value||100)/100;pctx.drawImage(tmp,minX,minY);pctx.restore();
+      if(status)status.textContent='Fill mode — filled the enclosed area you tapped.';
+      return true;
+    }
+
+    function markCoreFillTapMoved(e){
+      try{
+        const fake=new w.PointerEvent('pointermove',{bubbles:true,cancelable:true,composed:true,pointerId:e.pointerId,pointerType:e.pointerType,isPrimary:e.isPrimary,clientX:e.clientX+14,clientY:e.clientY,screenX:e.screenX,screenY:e.screenY,pressure:e.pressure,button:e.button,buttons:e.buttons||1});
+        paint.dispatchEvent(fake);
+      }catch(_){}
+    }
+
+    paint.addEventListener('pointerdown',e=>{
+      if(!e.isTrusted)return;
+      active.add(e.pointerId);if(active.size>1)hadMulti=true;
+      tracking.set(e.pointerId,{x:e.clientX,y:e.clientY,moved:false,tool:currentTool()});
+      if(active.size===1&&(currentTool()==='paint'||currentTool()==='erase'))beforeAction=snap();
+    },true);
+
+    paint.addEventListener('pointermove',e=>{
+      if(!e.isTrusted)return;
+      const q=tracking.get(e.pointerId);if(q&&Math.hypot(e.clientX-q.x,e.clientY-q.y)>9)q.moved=true;
+    },true);
+
     paint.addEventListener('pointerup',e=>{
       if(!e.isTrusted)return;
-      states.delete(e.pointerId);active.delete(e.pointerId);
+      const q=tracking.get(e.pointerId),tool=q?.tool||currentTool();
+      if(tool==='fill'&&q&&!q.moved&&!hadMulti&&active.size===1){
+        const before=snap();
+        markCoreFillTapMoved(e);
+        if(bucketAt(canvasPoint(e)))push(before);
+      }else if((tool==='paint'||tool==='erase')&&beforeAction&&!hadMulti&&active.size===1){
+        const before=beforeAction;w.setTimeout(()=>push(before),0);
+      }
+      tracking.delete(e.pointerId);active.delete(e.pointerId);
+      if(active.size===0){beforeAction=null;hadMulti=false;}
     },true);
-    paint.addEventListener('pointercancel',e=>{states.delete(e.pointerId);active.delete(e.pointerId);},true);
+    paint.addEventListener('pointercancel',e=>{tracking.delete(e.pointerId);active.delete(e.pointerId);if(active.size===0){beforeAction=null;hadMulti=false;}},true);
+
+    undo.addEventListener('click',e=>{
+      e.preventDefault();e.stopImmediatePropagation();
+      if(!history.length)return;future.push(snap());restore(history.pop());
+      if(status)status.textContent='Undo';
+    },true);
+    redo.addEventListener('click',e=>{
+      e.preventDefault();e.stopImmediatePropagation();
+      if(!future.length)return;history.push(snap());restore(future.pop());
+      if(status)status.textContent='Redo';
+    },true);
+    clear?.addEventListener('click',()=>{push(snap());},true);
+
+    const fillMessage=()=>w.setTimeout(()=>{if(status)status.textContent='Fill mode — tap inside any closed outline. It fills that enclosed area with the selected color.';},0);
+    d.getElementById('toolFill')?.addEventListener('click',fillMessage);
+    d.getElementById('mFill')?.addEventListener('click',fillMessage);
   }
 
   function install(){
     if(!d.getElementById('palette')||!buttons().length)return false;
     const h1=d.querySelector('h1');if(h1)h1.textContent='Color Sketchbook — Cool Girl & Cat';
     d.title='Color Sketchbook — Cool Girl & Cat';
-    lockHidden();paintSwatches();cleanGuideBlackFills();installCleanCanvas();installTouchUndoRedo();installStreamLine();
+    lockHidden();paintSwatches();cleanGuideBlackFills();installCleanCanvas();installTouchUndoRedo();installStreamLine();installBucketFillAndHistory();
     buttons().forEach((b,n)=>{if(COLORS[n])b.addEventListener('click',()=>w.setTimeout(()=>forceColor(n),0));});
     const obs=new w.MutationObserver(()=>w.queueMicrotask(syncSelection));
     obs.observe(d.getElementById('palette'),{subtree:true,attributes:true,attributeFilter:['class','disabled']});
-    ['clear','undo','redo'].forEach(id=>d.getElementById(id)?.addEventListener('click',()=>w.setTimeout(lockHidden,0)));
     const first=buttons()[1];if(first&&!first.disabled){first.click();w.setTimeout(()=>forceColor(1),0);lastSelected=1;}
-    const diag=d.getElementById('diag');if(diag)diag.textContent='Ready — strong StreamLine + Apple Pencil pressure size active. Light pressure = slim detail; firm pressure = wide.';
+    const diag=d.getElementById('diag');if(diag)diag.textContent='Ready — free outline bucket fill + strong StreamLine + Apple Pencil pressure size. No Pencil-down starter blob.';
     return true;
   }
 
