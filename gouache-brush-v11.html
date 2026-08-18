@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Gouache Brush Lab v11</title>
+  <style>
+    :root {
+      --bg: #f2efe8;
+      --panel: rgba(255,255,255,.92);
+      --ink: #222;
+      --line: #d8d3ca;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      overflow: hidden;
+    }
+    .app {
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 10px;
+      padding: 10px;
+    }
+    .toolbar {
+      background: var(--panel);
+      border: 1px solid rgba(0,0,0,.08);
+      box-shadow: 0 6px 24px rgba(0,0,0,.06);
+      border-radius: 16px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      backdrop-filter: blur(10px);
+    }
+    .title {
+      font-weight: 700;
+      letter-spacing: .01em;
+      margin-right: 4px;
+      white-space: nowrap;
+    }
+    .subtle {
+      font-size: 12px;
+      color: rgba(0,0,0,.35);
+      white-space: nowrap;
+    }
+    .control {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    input[type="range"] { width: 130px; }
+    input[type="color"] {
+      width: 38px;
+      height: 34px;
+      padding: 2px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: white;
+    }
+    button {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 8px 11px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:active { transform: translateY(1px); }
+    .stage {
+      min-height: 0;
+      border-radius: 18px;
+      overflow: hidden;
+      background: white;
+      border: 1px solid rgba(0,0,0,.08);
+      box-shadow: 0 8px 28px rgba(0,0,0,.06);
+      position: relative;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: #fff;
+      touch-action: none;
+      cursor: crosshair;
+    }
+    .hint {
+      position: absolute;
+      right: 12px;
+      bottom: 10px;
+      font-size: 12px;
+      color: rgba(0,0,0,.35);
+      pointer-events: none;
+      user-select: none;
+    }
+    @media (max-width: 700px) {
+      .app { padding: 6px; gap: 6px; }
+      .toolbar { border-radius: 12px; padding: 8px; gap: 8px 10px; }
+      .title { width: 100%; }
+      input[type="range"] { width: 110px; }
+      .stage { border-radius: 12px; }
+      .subtle { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="toolbar">
+      <div class="title">Gouache Brush Lab v11</div>
+      <div class="subtle">stronger painterly texture + better dry drag</div>
+
+      <label class="control">
+        <span>Color</span>
+        <input id="color" type="color" value="#a68363" />
+      </label>
+
+      <label class="control">
+        <span>Size</span>
+        <input id="size" type="range" min="4" max="120" value="60" />
+        <span id="sizeValue">60</span>
+      </label>
+
+      <label class="control" title="How fully loaded the brush feels.">
+        <span>Paint</span>
+        <input id="paint" type="range" min="45" max="100" value="100" />
+        <span id="paintValue">100%</span>
+      </label>
+
+      <label class="control" title="Strength of visible dry drag and interior bristle texture.">
+        <span>Texture</span>
+        <input id="texture" type="range" min="0" max="100" value="62" />
+        <span id="textureValue">62%</span>
+      </label>
+
+      <button id="undo" type="button">Undo</button>
+      <button id="clear" type="button">Clear</button>
+    </div>
+
+    <div class="stage" id="stage">
+      <canvas id="canvas"></canvas>
+      <div class="hint">Painterly square-ish brush. Texture follows stroke direction.</div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d', { alpha: false });
+      const stage = document.getElementById('stage');
+      const colorInput = document.getElementById('color');
+      const sizeInput = document.getElementById('size');
+      const paintInput = document.getElementById('paint');
+      const textureInput = document.getElementById('texture');
+      const sizeValue = document.getElementById('sizeValue');
+      const paintValue = document.getElementById('paintValue');
+      const textureValue = document.getElementById('textureValue');
+      const undoBtn = document.getElementById('undo');
+      const clearBtn = document.getElementById('clear');
+
+      const layer = document.createElement('canvas');
+      const lctx = layer.getContext('2d');
+
+      let dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+      let drawing = false;
+      let last = null;
+      let lastPressure = 0.72;
+      let lastDir = { dx: 1, dy: 0, w: 24 };
+      let history = [];
+      const maxHistory = 20;
+
+      function resizeCanvas(preserve = true) {
+        const rect = stage.getBoundingClientRect();
+        let snapshot = null;
+        if (preserve && canvas.width && canvas.height) {
+          snapshot = document.createElement('canvas');
+          snapshot.width = canvas.width;
+          snapshot.height = canvas.height;
+          snapshot.getContext('2d').drawImage(canvas, 0, 0);
+        }
+
+        dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+        layer.width = canvas.width;
+        layer.height = canvas.height;
+
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, rect.width, rect.height);
+        lctx.clearRect(0, 0, rect.width, rect.height);
+
+        if (snapshot) {
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.drawImage(snapshot, 0, 0, snapshot.width, snapshot.height, 0, 0, canvas.width, canvas.height);
+          ctx.restore();
+        }
+      }
+
+      function saveHistory() {
+        try {
+          const data = canvas.toDataURL('image/png');
+          history.push(data);
+          if (history.length > maxHistory) history.shift();
+        } catch (_) {}
+      }
+
+      function restoreDataURL(data) {
+        const img = new Image();
+        img.onload = () => {
+          const rect = stage.getBoundingClientRect();
+          ctx.save();
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, rect.width, rect.height);
+          ctx.drawImage(img, 0, 0, rect.width, rect.height);
+          ctx.restore();
+        };
+        img.src = data;
+      }
+
+      function parseHex(hex) {
+        const v = hex.replace('#','');
+        return {
+          r: parseInt(v.slice(0,2), 16),
+          g: parseInt(v.slice(2,4), 16),
+          b: parseInt(v.slice(4,6), 16)
+        };
+      }
+
+      function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+      function mix(a, b, t) { return a + (b - a) * t; }
+
+      function shade(hex, amt) {
+        const { r, g, b } = parseHex(hex);
+        const f = amt >= 0 ? 255 : 0;
+        const t = Math.abs(amt);
+        const rr = Math.round(r + (f - r) * t);
+        const gg = Math.round(g + (f - g) * t);
+        const bb = Math.round(b + (f - b) * t);
+        return `rgb(${rr},${gg},${bb})`;
+      }
+
+      function pressureFromEvent(e) {
+        if (e.pointerType === 'pen' && e.pressure > 0) return e.pressure;
+        return 0.72;
+      }
+
+      function pointFromEvent(e) {
+        const r = canvas.getBoundingClientRect();
+        return { x: e.clientX - r.left, y: e.clientY - r.top };
+      }
+
+      function paintAmount() {
+        return Number(paintInput.value) / 100;
+      }
+
+      function textureStrength() {
+        const v = Number(textureInput.value) / 100;
+        return 0.45 + Math.pow(v, 0.70) * 1.05;
+      }
+
+      function widthFromPressure(p) {
+        const base = Number(sizeInput.value);
+        return base * (0.62 + p * 0.48);
+      }
+
+      function bodyAlpha(p, velocityFactor) {
+        const load = paintAmount();
+        return clamp((0.86 + load * 0.14) * (0.95 + velocityFactor * 0.05) * (0.96 + p * 0.04), 0.82, 1);
+      }
+
+      function clearLayer() {
+        const rect = stage.getBoundingClientRect();
+        lctx.clearRect(0, 0, rect.width, rect.height);
+      }
+
+      function quadPath(a, b, w1, w2) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 0.01) return null;
+        const ux = dx / len;
+        const uy = dy / len;
+        const nx = -uy;
+        const ny = ux;
+        const hw1 = w1 / 2;
+        const hw2 = w2 / 2;
+
+        return {
+          len, ux, uy, nx, ny,
+          p1: { x: a.x + nx * hw1, y: a.y + ny * hw1 },
+          p2: { x: b.x + nx * hw2, y: b.y + ny * hw2 },
+          p3: { x: b.x - nx * hw2, y: b.y - ny * hw2 },
+          p4: { x: a.x - nx * hw1, y: a.y - ny * hw1 }
+        };
+      }
+
+      function drawBodySegment(a, b, w1, w2, baseColor, alpha) {
+        const q = quadPath(a, b, w1, w2);
+        if (!q) return null;
+
+        lctx.save();
+        lctx.globalCompositeOperation = 'source-over';
+        lctx.fillStyle = baseColor;
+        lctx.globalAlpha = alpha;
+
+        lctx.beginPath();
+        lctx.moveTo(q.p1.x, q.p1.y);
+        lctx.lineTo(q.p2.x, q.p2.y);
+        lctx.lineTo(q.p3.x, q.p3.y);
+        lctx.lineTo(q.p4.x, q.p4.y);
+        lctx.closePath();
+        lctx.fill();
+
+        lctx.lineCap = 'round';
+        lctx.strokeStyle = baseColor;
+        lctx.globalAlpha = alpha * 0.92;
+        lctx.lineWidth = Math.max(1, Math.min(w1, w2) * 0.24);
+        lctx.beginPath();
+        lctx.moveTo(a.x, a.y);
+        lctx.lineTo(b.x, b.y);
+        lctx.stroke();
+        lctx.restore();
+
+        return q;
+      }
+
+      function textureSegment(a, b, w1, w2, baseColor) {
+        const q = quadPath(a, b, w1, w2);
+        if (!q) return;
+        const brush = (w1 + w2) / 2;
+        const str = textureStrength();
+        const load = paintAmount();
+        const dryBoost = (1.12 - load * 0.52) * str;
+
+        const broad = [
+          [-0.32, -0.14, 0.16],
+          [-0.18,  0.12, 0.13],
+          [-0.03, -0.10, 0.11],
+          [ 0.14,  0.13, 0.13],
+          [ 0.30, -0.12, 0.15]
+        ];
+        lctx.save();
+        lctx.lineCap = 'butt';
+        for (const [offMul, tone, widthMul] of broad) {
+          const off = offMul * brush;
+          lctx.globalCompositeOperation = 'source-over';
+          lctx.strokeStyle = shade(baseColor, tone);
+          lctx.globalAlpha = (0.065 + Math.abs(tone) * 0.12) * (0.55 + load * 0.45) * str;
+          lctx.lineWidth = Math.max(0.9, brush * widthMul);
+          lctx.beginPath();
+          lctx.moveTo(a.x + q.nx * off, a.y + q.ny * off);
+          lctx.lineTo(b.x + q.nx * off, b.y + q.ny * off);
+          lctx.stroke();
+        }
+        lctx.restore();
+
+        const fine = [-0.44,-0.38,-0.31,-0.24,-0.17,-0.10,-0.03,0.04,0.11,0.18,0.26,0.34,0.41];
+        lctx.save();
+        lctx.lineCap = 'round';
+        for (let i = 0; i < fine.length; i++) {
+          const off = fine[i] * brush;
+          const tone = i % 5 === 0 ? 0.18 : i % 5 === 1 ? -0.16 : i % 5 === 2 ? 0.11 : i % 5 === 3 ? -0.10 : 0.06;
+          lctx.globalCompositeOperation = 'source-over';
+          lctx.strokeStyle = shade(baseColor, tone);
+          lctx.globalAlpha = (0.09 + (i % 3) * 0.025) * str;
+          lctx.lineWidth = Math.max(0.7, brush * (0.007 + (i % 2) * 0.0035));
+          lctx.beginPath();
+          lctx.moveTo(a.x + q.nx * off, a.y + q.ny * off);
+          lctx.lineTo(b.x + q.nx * off, b.y + q.ny * off);
+          lctx.stroke();
+        }
+        lctx.restore();
+
+        const dry = [-0.43,-0.36,-0.30,-0.22,-0.14,-0.05,0.06,0.15,0.24,0.33,0.40];
+        lctx.save();
+        lctx.globalCompositeOperation = 'destination-out';
+        lctx.lineCap = 'round';
+        for (let i = 0; i < dry.length; i++) {
+          const off = dry[i] * brush;
+          const gate = Math.sin((i + 1) * 1.4) * 0.45;
+          lctx.globalAlpha = (0.13 + 0.10 * Math.abs(gate)) * dryBoost;
+          lctx.lineWidth = Math.max(0.7, brush * (0.0055 + (i % 3) * 0.0025));
+
+          const sJit = brush * (0.012 + (i % 2) * 0.004);
+          const eJit = brush * (0.016 + (i % 3) * 0.003);
+          lctx.beginPath();
+          lctx.moveTo(
+            a.x + q.nx * off + q.ux * sJit,
+            a.y + q.ny * off + q.uy * sJit
+          );
+          lctx.lineTo(
+            b.x + q.nx * off - q.ux * eJit,
+            b.y + q.ny * off - q.uy * eJit
+          );
+          lctx.stroke();
+        }
+        lctx.restore();
+
+        lctx.save();
+        lctx.globalCompositeOperation = 'destination-out';
+        const edgeBands = [-0.47, -0.43, 0.43, 0.47];
+        for (let i = 0; i < edgeBands.length; i++) {
+          const off = edgeBands[i] * brush;
+          for (let k = 0; k < 4; k++) {
+            const t = (k + 1) / 5;
+            const x = mix(a.x, b.x, t);
+            const y = mix(a.y, b.y, t);
+            lctx.globalAlpha = (0.05 + 0.025 * k) * str;
+            lctx.beginPath();
+            lctx.ellipse(
+              x + q.nx * off + q.ux * brush * (0.01 * (k - 1.5)),
+              y + q.ny * off,
+              brush * (0.010 + 0.004 * k),
+              brush * (0.004 + 0.002 * k),
+              Math.atan2(q.uy, q.ux),
+              0,
+              Math.PI * 2
+            );
+            lctx.fill();
+          }
+        }
+        lctx.restore();
+      }
+
+      function addStrokeTip(point, dir, width, baseColor) {
+        const len = Math.hypot(dir.dx, dir.dy) || 1;
+        const ux = dir.dx / len;
+        const uy = dir.dy / len;
+        const nx = -uy;
+        const ny = ux;
+        const brush = width;
+        const str = textureStrength();
+        const load = paintAmount();
+
+        lctx.save();
+        lctx.globalCompositeOperation = 'source-over';
+        lctx.fillStyle = shade(baseColor, 0.05);
+        lctx.globalAlpha = 0.18 * (0.65 + load * 0.35);
+        lctx.beginPath();
+        lctx.ellipse(
+          point.x - ux * brush * 0.10,
+          point.y - uy * brush * 0.10,
+          brush * 0.20,
+          brush * 0.16,
+          Math.atan2(uy, ux),
+          0,
+          Math.PI * 2
+        );
+        lctx.fill();
+        lctx.restore();
+
+        lctx.save();
+        lctx.globalCompositeOperation = 'destination-out';
+        lctx.lineCap = 'round';
+        for (let i = 0; i < 9; i++) {
+          const u = -0.38 + i * (0.76 / 8);
+          const off = u * brush;
+          const cutLen = brush * (0.025 + (i % 4) * 0.012);
+          lctx.globalAlpha = (0.12 + (i % 3) * 0.03) * str;
+          lctx.lineWidth = Math.max(0.55, brush * (0.0048 + (i % 2) * 0.0028));
+          lctx.beginPath();
+          lctx.moveTo(
+            point.x + nx * off - ux * brush * 0.02,
+            point.y + ny * off - uy * brush * 0.02
+          );
+          lctx.lineTo(
+            point.x + nx * off + ux * cutLen,
+            point.y + ny * off + uy * cutLen
+          );
+          lctx.stroke();
+        }
+        lctx.restore();
+
+        ctx.drawImage(layer, 0, 0);
+        clearLayer();
+      }
+
+      function renderSegment(a, b, pressureA, pressureB, velocityFactor = 1) {
+        const w1 = widthFromPressure(pressureA);
+        const w2 = widthFromPressure(pressureB);
+        const baseColor = colorInput.value;
+        const alpha = bodyAlpha((pressureA + pressureB) * 0.5, velocityFactor);
+
+        clearLayer();
+        drawBodySegment(a, b, w1, w2, baseColor, alpha);
+        textureSegment(a, b, w1, w2, baseColor);
+        ctx.drawImage(layer, 0, 0);
+        clearLayer();
+
+        lastDir = { dx: b.x - a.x, dy: b.y - a.y, w: w2 };
+      }
+
+      function strokeTo(a, b, pressureA, pressureB) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 0.01) return;
+
+        const baseSize = Number(sizeInput.value);
+        const step = Math.max(2, baseSize * 0.34);
+        const steps = Math.max(1, Math.ceil(dist / step));
+        const velocityFactor = clamp(18 / Math.max(18, dist), 0.72, 1);
+
+        let prev = a;
+        let prevP = pressureA;
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          const curr = { x: mix(a.x, b.x, t), y: mix(a.y, b.y, t) };
+          const currP = mix(pressureA, pressureB, t);
+          renderSegment(prev, curr, prevP, currP, velocityFactor);
+          prev = curr;
+          prevP = currP;
+        }
+      }
+
+      function onPointerDown(e) {
+        if (e.button !== undefined && e.button !== 0 && e.pointerType !== 'pen') return;
+        e.preventDefault();
+        canvas.setPointerCapture?.(e.pointerId);
+        saveHistory();
+        drawing = true;
+        last = pointFromEvent(e);
+        lastPressure = pressureFromEvent(e);
+        const tiny = { x: last.x + 0.01, y: last.y + 0.01 };
+        renderSegment(last, tiny, lastPressure, lastPressure, 1);
+      }
+
+      function onPointerMove(e) {
+        if (!drawing) return;
+        e.preventDefault();
+        const p = pointFromEvent(e);
+        const pressure = pressureFromEvent(e);
+        strokeTo(last, p, lastPressure, pressure);
+        last = p;
+        lastPressure = pressure;
+      }
+
+      function endStroke(e) {
+        if (!drawing) return;
+        drawing = false;
+        if (last) addStrokeTip(last, lastDir, lastDir.w || widthFromPressure(lastPressure), colorInput.value);
+        last = null;
+        try { canvas.releasePointerCapture?.(e.pointerId); } catch (_) {}
+      }
+
+      canvas.addEventListener('pointerdown', onPointerDown);
+      canvas.addEventListener('pointermove', onPointerMove);
+      canvas.addEventListener('pointerup', endStroke);
+      canvas.addEventListener('pointercancel', endStroke);
+      canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+      sizeInput.addEventListener('input', () => sizeValue.textContent = sizeInput.value);
+      paintInput.addEventListener('input', () => paintValue.textContent = paintInput.value + '%');
+      textureInput.addEventListener('input', () => textureValue.textContent = textureInput.value + '%');
+
+      undoBtn.addEventListener('click', () => {
+        const previous = history.pop();
+        if (previous) restoreDataURL(previous);
+      });
+
+      clearBtn.addEventListener('click', () => {
+        saveHistory();
+        const r = stage.getBoundingClientRect();
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, r.width, r.height);
+        ctx.restore();
+      });
+
+      let resizeTimer;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => resizeCanvas(true), 120);
+      });
+
+      resizeCanvas(false);
+    })();
+  </script>
+</body>
+</html>
