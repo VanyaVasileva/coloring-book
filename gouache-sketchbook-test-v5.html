@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Gouache Sketchbook</title>
+<style>html,body{margin:0;height:100%;background:#f6f4f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#2a2620}#loading{height:100%;display:grid;place-items:center;padding:24px;text-align:center}#loading strong{display:block;font-size:17px;margin-bottom:8px}#loading span{font-size:13px;color:#7d7668}</style></head>
+<body><div id="loading"><div><strong>Loading Gouache Sketchbook…</strong><span>Separate gouache test — the Ink Sketchbook is untouched.</span></div></div>
+<script>
+(async()=>{'use strict';
+const BASE='https://raw.githubusercontent.com/VanyaVasileva/ink-sketchbook/feature/new-button/index-test-mp4-visible.html';
+const HUMAN='https://raw.githubusercontent.com/VanyaVasileva/ink-sketchbook/feature/new-button/ink-sketchbook-with-hand.html';
+const V27='https://raw.githubusercontent.com/VanyaVasileva/coloring-book/main/gouache-brush-v27.html';
+const SKELETON='https://raw.githubusercontent.com/VanyaVasileva/ink-sketchbook/feature/new-button/Skeleton-hand.png';
+const CAT='https://raw.githubusercontent.com/VanyaVasileva/ink-sketchbook/feature/new-button/Fluffy-paw.png';
+const blobData=b=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(b)});
+async function img(url){try{const r=await fetch(url,{cache:'no-store'});return r.ok?await blobData(await r.blob()):null}catch(_){return null}}
+function repl(h,a,b,name){if(!h.includes(a))throw Error('Could not prepare '+name);return h.replace(a,b)}
+try{
+ const [br,hr,vr,skel,cat]=await Promise.all([fetch(BASE,{cache:'no-store'}),fetch(HUMAN,{cache:'no-store'}).catch(()=>null),fetch(V27,{cache:'no-store'}),img(SKELETON),img(CAT)]);
+ if(!br.ok||!vr.ok)throw Error('Could not load the source test files.');
+ let html=await br.text(),v27=await vr.text(),human=null;
+ if(hr&&hr.ok){const m=(await hr.text()).match(/const HAND_ICON_SRC = ("data:image\/png;base64,[^"]+");/);if(m)try{human=JSON.parse(m[1])}catch(_){}}
+ html=html.replaceAll('Ink Sketchbook','Gouache Sketchbook').replaceAll('ink-sketchbook-recording','gouache-sketchbook-recording').replaceAll('ink lines','gouache strokes');
+ html=html.replaceAll("'drawing_' + Date.now()","'gouache_drawing_' + Date.now()").replaceAll("'drawings_index'","'gouache_drawings_index'");
+
+ const oldCtrls=`      <div class="slider-group"><span data-i18n="wobbleLabel">Wobble</span> <input type="range" id="wobbleSlider" min="0" max="3" value="1" step="0.5"></div>
+      <div class="slider-group"><span data-i18n="thicknessLabel">Thickness</span> <input type="range" id="thicknessSlider" min="0.5" max="3" value="1" step="0.25"></div>
+      <div class="slider-group"><span data-i18n="minLabel">Min</span> <input type="range" id="minSlider" min="0.5" max="6" value="1" step="0.5"></div>
+      <div class="slider-group"><span data-i18n="maxLabel">Max</span> <input type="range" id="maxSlider" min="2" max="16" value="8" step="0.5"></div>`;
+ const newCtrls=`      <div class="slider-group"><span>Brush size</span><div class="row" style="width:100%;flex-wrap:nowrap"><input type="range" id="gouacheSizeSlider" min="7" max="150" value="60"><strong id="gouacheSizeOut">60</strong></div></div>
+      <div class="slider-group"><span>Paint</span><div class="row" style="width:100%;flex-wrap:nowrap"><input type="range" id="gouachePaintSlider" min="45" max="100" value="100"><strong id="gouachePaintOut">100%</strong></div></div>
+      <div class="slider-group"><span>Texture</span><div class="row" style="width:100%;flex-wrap:nowrap"><input type="range" id="gouacheTextureSlider" min="0" max="100" value="80"><strong id="gouacheTextureOut">80%</strong></div></div>`;
+ html=repl(html,oldCtrls,newCtrls,'v27 controls');
+ const oldPal=`      <div class="row palette" id="palette"></div>
+      <input type="color" id="colorPicker" value="#2a2620" style="width:32px; height:32px; border:2px solid #d8d3c6; border-radius:6px; padding:0; cursor:pointer;">`;
+ const newPal=`      <div style="font-size:12px;color:#6b6558;font-weight:600">Colors</div><div class="row palette" id="palette"></div>
+      <div style="font-size:12px;color:#6b6558;font-weight:600">Muted Gouache</div><div class="row palette" id="mutedPalette"></div>
+      <div style="font-size:12px;color:#6b6558;font-weight:600">All colors</div><input type="color" id="colorPicker" value="#2a2620" style="width:42px;height:34px;border:2px solid #d8d3c6;border-radius:6px;padding:0;cursor:pointer;">`;
+ html=repl(html,oldPal,newPal,'muted palette');
+
+ const rec='<button id="recordBtn">⏺ <span data-i18n="recordBtn">Record</span></button>';
+ html=repl(html,rec,'<button id="brushCursorBtn" type="button" class="active" title="Toggle brush cursor">◎ Cursor</button>'+rec+'<button id="humanHandBtn" type="button" class="active">Human Hand</button><button id="skeletonHandBtn" type="button">Skeleton Hand</button><button id="catPawBtn" type="button">Cat Paw</button>','hand selector');
+ html=html.replace('</header>','</header><div style="width:100%;padding:7px 14px;background:#fffaf0;border-bottom:1px solid #e5e1d8;color:#6b6558;font-size:12px;line-height:1.4;text-align:center">ⓘ Cursor is screen-only and is hidden during recording. Hand/Paw selection is for recording only.</div>');
+
+ const oldVars=`const wobbleSlider = document.getElementById('wobbleSlider');
+const thicknessSlider = document.getElementById('thicknessSlider');
+const minSlider = document.getElementById('minSlider');
+const maxSlider = document.getElementById('maxSlider');`;
+ const newVars=`const gouacheSizeSlider=document.getElementById('gouacheSizeSlider'),gouachePaintSlider=document.getElementById('gouachePaintSlider'),gouacheTextureSlider=document.getElementById('gouacheTextureSlider');
+const gouacheSizeOut=document.getElementById('gouacheSizeOut'),gouachePaintOut=document.getElementById('gouachePaintOut'),gouacheTextureOut=document.getElementById('gouacheTextureOut');
+gouacheSizeSlider.oninput=()=>gouacheSizeOut.textContent=gouacheSizeSlider.value;gouachePaintSlider.oninput=()=>{gouachePaintOut.textContent=gouachePaintSlider.value+'%';if(window.__gLive){window.__gLive.style.opacity=+gouachePaintSlider.value/100;window.__gTex.style.opacity=+gouachePaintSlider.value/100}};gouacheTextureSlider.oninput=()=>gouacheTextureOut.textContent=gouacheTextureSlider.value+'%';`;
+ html=repl(html,oldVars,newVars,'v27 slider wiring');
+
+ const ctxLine="const ctx = drawCanvas.getContext('2d', { willReadFrequently: true });";
+ const layers=`${ctxLine}
+const gouacheLiveCanvas=document.createElement('canvas'),gouacheTextureCanvas=document.createElement('canvas'),gouacheCutCanvas=document.createElement('canvas');
+[gouacheLiveCanvas,gouacheTextureCanvas,gouacheCutCanvas].forEach((c,i)=>{c.style.pointerEvents='none';c.style.background='transparent';c.style.zIndex=String(3+i)});drawCanvas.after(gouacheLiveCanvas);gouacheLiveCanvas.after(gouacheTextureCanvas);gouacheTextureCanvas.after(gouacheCutCanvas);window.__gLive=gouacheLiveCanvas;window.__gTex=gouacheTextureCanvas;
+const gouacheLiveCtx=gouacheLiveCanvas.getContext('2d',{alpha:true,desynchronized:true}),gouacheTextureCtx=gouacheTextureCanvas.getContext('2d',{alpha:true,desynchronized:true}),gouacheCutCtx=gouacheCutCanvas.getContext('2d',{alpha:true,desynchronized:true});`;
+ html=repl(html,ctxLine,layers,'gouache live layers');
+ html=html.replaceAll('[refCanvas, drawCanvas]','[refCanvas, drawCanvas, gouacheLiveCanvas, gouacheTextureCanvas, gouacheCutCanvas]');
+ html=repl(html,`  refCanvas.style.transform = t;
+  drawCanvas.style.transform = t;`,`  refCanvas.style.transform = t;
+  drawCanvas.style.transform = t;
+  gouacheLiveCanvas.style.transform=t;gouacheTextureCanvas.style.transform=t;gouacheCutCanvas.style.transform=t;`,'gouache zoom sync');
+
+ const cpHook=`colorPicker.addEventListener('input', () => {
+  currentColor = colorPicker.value;
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+});`;
+ html=repl(html,cpHook,cpHook+`
+const muted=['#A98467','#8F6F5A','#B7A48C','#C2B8A3','#8C7D6B','#78866B','#6F8170','#7F8C8D','#6C7A89','#8D7B93','#A27B7B','#B08A7A','#C2A46F','#7B6D5D','#565A4F','#9B8B7A'],mp=document.getElementById('mutedPalette');muted.forEach(c=>{const s=document.createElement('div');s.className='swatch';s.style.background=c;s.title=c;s.onclick=()=>{currentColor=c;colorPicker.value=c;document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('active'));s.classList.add('active')};mp.appendChild(s)});`,'muted colors');
+
+ const a=v27.indexOf('function rng(seed)'),b=v27.indexOf('function commit(){',a);if(a<0||b<0)throw Error('Could not read v27 brush engine.');
+ let engine=v27.slice(a,b).replace('function begin(p){save();clearLive();','function begin(p){clearLive();').replace("cctx.strokeStyle='#fff'","cctx.strokeStyle=paperColorPicker.value||'#fff'");
+ const adapter=`
+let stroke=null,lastPenPos=null,gouacheDpr=1;const size=gouacheSizeSlider,opacity=gouachePaintSlider,texture=gouacheTextureSlider,color=colorPicker,live=gouacheLiveCanvas,textureLive=gouacheTextureCanvas,cutLive=gouacheCutCanvas,lctx=gouacheLiveCtx,xctx=gouacheTextureCtx,cctx=gouacheCutCtx;const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function clearOne(x,c){x.save();x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,c.width,c.height);x.restore()}function clearLive(){clearOne(lctx,live);clearOne(xctx,textureLive);clearOne(cctx,cutLive)}
+${engine}
+function gPos(ev){const p=getPos(ev);return{x:p.x/gouacheDpr,y:p.y/gouacheDpr,pressure:ev.pressure>0?ev.pressure:.5,time:ev.timeStamp||performance.now()}}
+function startStroke(e){drawing=true;moved=false;points=[];usingPressure=e.pointerType==='pen';inputModeEl.textContent=usingPressure?'(Pencil pressure detected)':'(no pressure)';lastPenPos=getPos(e);if(mode==='erase'){points=[lastPenPos];return}clearLive();gouacheDpr=getDisplayDpr();[lctx,xctx,cctx].forEach(x=>x.setTransform(gouacheDpr,0,0,gouacheDpr,0,0));begin(gPos(e));cutLive.style.opacity=1}
+function continueStroke(e){if(!drawing)return;const ce=typeof e.getCoalescedEvents==='function'&&e.pointerType==='pen'?e.getCoalescedEvents():null,arr=ce&&ce.length?ce:[e];if(mode==='erase'){for(const ev of arr){const p=getPos(ev),q=points[points.length-1];if(!q){points.push(p);continue}if(Math.hypot(p.x-q.x,p.y-q.y)<1)continue;moved=true;ctx.save();ctx.globalCompositeOperation='destination-out';ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=+eraserSizeSlider.value*getDisplayDpr();ctx.beginPath();ctx.moveTo(q.x,q.y);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.restore();points.push(p);lastPenPos=p}return}for(const ev of arr){process(gPos(ev));lastPenPos=getPos(ev);moved=true}}
+function endStroke(){if(!drawing)return;drawing=false;if(mode==='erase'){if(!moved&&points.length){const p=points[0];ctx.save();ctx.globalCompositeOperation='destination-out';ctx.beginPath();ctx.arc(p.x,p.y,+eraserSizeSlider.value*getDisplayDpr()/2,0,Math.PI*2);ctx.fill();ctx.restore()}}else if(stroke){lctx.save();lctx.setTransform(1,0,0,1,0,0);lctx.globalCompositeOperation='destination-out';lctx.globalAlpha=1;lctx.drawImage(cutLive,0,0);lctx.restore();xctx.save();xctx.setTransform(1,0,0,1,0,0);xctx.globalCompositeOperation='destination-out';xctx.globalAlpha=1;xctx.drawImage(cutLive,0,0);xctx.restore();ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=+opacity.value/100;ctx.drawImage(live,0,0);ctx.drawImage(textureLive,0,0);ctx.restore();clearLive();stroke=null}saveHistory()}
+`;
+ const sr=/function startStroke\(e\) \{[\s\S]*?\n\}\n\nconst activePointers/;if(!sr.test(html))throw Error('Could not swap in v27.');html=html.replace(sr,adapter+'\nconst activePointers');
+ html=html.replace(`  } else if (activePointers.size === 2) {\n    drawing = false;`,`  } else if (activePointers.size === 2) {\n    if(drawing)endStroke();\n    drawing = false;`);
+ html=html.replace(`undoBtn.onclick = () => {\n  if (history.length > 1) {`,`undoBtn.onclick = () => {\n  clearLive();\n  if (history.length > 1) {`).replace(`redoBtn.onclick = () => {\n  if (redoStack.length > 0) {`,`redoBtn.onclick = () => {\n  clearLive();\n  if (redoStack.length > 0) {`).replace(`clearBtn.onclick = () => {\n  ctx.clearRect`,`clearBtn.onclick = () => {\n  clearLive();\n  ctx.clearRect`);
+
+ const rv='let recordRAF = null;';
+ const hs=`let recordRAF = null;const humanHandIcon=new Image(),skeletonHandIcon=new Image(),catPawIcon=new Image();let humanHandReady=false,skeletonHandReady=false,catPawReady=false;humanHandIcon.onload=()=>humanHandReady=true;skeletonHandIcon.onload=()=>skeletonHandReady=true;catPawIcon.onload=()=>catPawReady=true;${human?`humanHandIcon.src=${JSON.stringify(human)};`:''}${skel?`skeletonHandIcon.src=${JSON.stringify(skel)};`:''}${cat?`catPawIcon.src=${JSON.stringify(cat)};`:''}let selectedRecordingHand='human';function setRecordingHand(w){selectedRecordingHand=w;humanHandBtn.classList.toggle('active',w==='human');skeletonHandBtn.classList.toggle('active',w==='skeleton');catPawBtn.classList.toggle('active',w==='cat')}humanHandBtn.onclick=()=>setRecordingHand('human');skeletonHandBtn.onclick=()=>setRecordingHand('skeleton');catPawBtn.onclick=()=>setRecordingHand('cat');`;
+ html=repl(html,rv,hs,'recording hands');
+ const rf=/function compositeRecordFrame\(\) \{[\s\S]*?recordRAF = requestAnimationFrame\(compositeRecordFrame\);\n\}/;
+ const nf=`function compositeRecordFrame(){recordCtx.fillStyle=paperColorPicker.value||'#fff';recordCtx.fillRect(0,0,recordCanvas.width,recordCanvas.height);recordCtx.globalAlpha=1;recordCtx.drawImage(drawCanvas,0,0);if(drawing&&mode==='draw'){recordCtx.globalAlpha=+opacity.value/100;recordCtx.drawImage(live,0,0);recordCtx.drawImage(textureLive,0,0);recordCtx.globalAlpha=1;recordCtx.drawImage(cutLive,0,0)}if(lastPenPos){if(selectedRecordingHand==='cat'&&catPawReady){const s=1;recordCtx.drawImage(catPawIcon,lastPenPos.x-179*s,lastPenPos.y-459*s,1024*s,1024*s)}else if(selectedRecordingHand==='skeleton'&&skeletonHandReady){const s=950/1254;recordCtx.drawImage(skeletonHandIcon,lastPenPos.x-198*s,lastPenPos.y-552*s,1254*s,1254*s)}else if(selectedRecordingHand==='human'&&humanHandReady){const s=1380/900;recordCtx.drawImage(humanHandIcon,lastPenPos.x-157.2*s,lastPenPos.y-402.6*s,900*s,900*s)}}recordRAF=requestAnimationFrame(compositeRecordFrame)}`;
+ if(!rf.test(html))throw Error('Could not add recording hands.');html=html.replace(rf,nf);
+ html=html.replace('["Draw", "The ink pen. Draw freehand, or trace over a reference image."],','["Draw", "The v27 gouache brush. Paint freehand, or trace over a reference image."],');
+
+ const cursorRuntime=`
+const brushCursorBtn=document.getElementById('brushCursorBtn');
+const brushCursorCanvas=document.createElement('canvas');brushCursorCanvas.id='brushCursorCanvas';
+Object.assign(brushCursorCanvas.style,{position:'absolute',pointerEvents:'none',zIndex:'30',display:'none',background:'transparent',boxShadow:'none',transformOrigin:'50% 50%'});wrap.appendChild(brushCursorCanvas);
+let bcEnabled=true,bcInside=false,bcX=0,bcY=0,bcAngle=0,bcHasAngle=false,bcLastX=null,bcLastY=null;
+const BC_L=[.008,.120,.224,.496,.600,.712,.816,.856,.824,.848,.880,.880,.920,.968,.992,1,1,.976,.968,.960,.936,.872,.904,.872,.784];
+const BC_R=[.477,.742,.836,.914,.938,.977,.992,1,1,1,.883,.875,.875,.898,.930,.875,.852,.852,.820,.797,.719,.695,.695,.633,.641];
+function bcAD(a,b){let d=b-a;while(d>Math.PI)d-=Math.PI*2;while(d< -Math.PI)d+=Math.PI*2;return d}
+function bcRec(){return recordBtn.classList.contains('recording')}
+function bcHide(){brushCursorCanvas.style.display='none'}
+function bcDraw(){if(!bcEnabled||!bcInside||mode!=='draw'||bcRec()){bcHide();return}const zoom=Math.max(.15,view.scale||1),brush=+gouacheSizeSlider.value,W=brush*1.08*zoom,H=brush*.90*zoom,pad=Math.max(5,brush*.13*zoom),cw=Math.ceil(W+pad*2),ch=Math.ceil(H+pad*2),d=Math.max(1,Math.min(2,devicePixelRatio||1));brushCursorCanvas.width=Math.max(1,Math.round(cw*d));brushCursorCanvas.height=Math.max(1,Math.round(ch*d));brushCursorCanvas.style.width=cw+'px';brushCursorCanvas.style.height=ch+'px';const c=brushCursorCanvas.getContext('2d');c.setTransform(d,0,0,d,0,0);c.clearRect(0,0,cw,ch);const cap=brush*.22*zoom,x0=pad+brush*.020*zoom,x1=pad+W-brush*.020*zoom,y0=pad+H*.035,y1=pad+H*.965,N=BC_L.length;c.beginPath();for(let i=0;i<N;i++){const u=i/(N-1),y=y0+(y1-y0)*u,x=x0+cap*(1-BC_L[i]);if(i===0)c.moveTo(x,y);else c.lineTo(x,y)}for(let i=N-1;i>=0;i--){const u=i/(N-1),y=y0+(y1-y0)*u,x=x1-cap*(1-BC_R[i]);c.lineTo(x,y)}c.closePath();c.lineJoin='round';c.strokeStyle='rgba(255,255,255,.96)';c.lineWidth=3;c.stroke();c.strokeStyle='rgba(38,35,31,.88)';c.lineWidth=1.15;c.stroke();brushCursorCanvas.style.left=(bcX-cw/2)+'px';brushCursorCanvas.style.top=(bcY-ch/2)+'px';brushCursorCanvas.style.transform='rotate('+bcAngle+'rad)';brushCursorCanvas.style.display='block'}
+function bcMove(e){if(e.pointerType==='touch'){bcInside=false;bcHide();return}const rr=wrap.getBoundingClientRect();bcX=e.clientX-rr.left;bcY=e.clientY-rr.top;bcInside=true;if(drawing&&mode==='draw'&&stroke&&stroke.angle!==null){bcAngle=stroke.angle+(view.rotation||0)*Math.PI/180;bcHasAngle=true}else if(bcLastX!==null){const dx=e.clientX-bcLastX,dy=e.clientY-bcLastY;if(Math.hypot(dx,dy)>.35){const target=Math.atan2(dy,dx);if(!bcHasAngle){bcAngle=target;bcHasAngle=true}else bcAngle+=Math.max(-.035,Math.min(.035,bcAD(bcAngle,target)))*.38}}bcLastX=e.clientX;bcLastY=e.clientY;bcDraw()}
+function bcLeave(){bcInside=false;bcLastX=null;bcLastY=null;bcHide()}
+brushCursorBtn.onclick=()=>{bcEnabled=!bcEnabled;brushCursorBtn.classList.toggle('active',bcEnabled);brushCursorBtn.textContent=bcEnabled?'◎ Cursor':'○ Cursor';bcDraw()};
+drawCanvas.addEventListener('pointerenter',bcMove,{passive:true});drawCanvas.addEventListener('pointermove',bcMove,{passive:true});drawCanvas.addEventListener('pointerdown',bcMove,{passive:true});drawCanvas.addEventListener('pointerup',bcMove,{passive:true});drawCanvas.addEventListener('pointerleave',bcLeave,{passive:true});gouacheSizeSlider.addEventListener('input',bcDraw);
+function bcRecordState(){const recording=bcRec();brushCursorBtn.disabled=recording;if(recording)bcHide();else bcDraw()}new MutationObserver(bcRecordState).observe(recordBtn,{attributes:true,attributeFilter:['class']});bcRecordState();
+`;
+ const closeScript='</script>';
+ html=html.replace(closeScript,cursorRuntime+closeScript);
+ document.open();document.write(html);document.close();
+}catch(e){console.error(e);document.body.innerHTML='<div style="padding:28px;font-family:sans-serif"><h2>Could not load Gouache Sketchbook test</h2><p>'+String(e.message||e)+'</p><p>Refresh once; if it repeats, send me this message.</p></div>'}
+})();
+</script></body></html>
