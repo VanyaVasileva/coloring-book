@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Gouache Sketchbook — fast cursor test</title>
+<style>
+html,body{margin:0;height:100%;background:#f6f4f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#2a2620}
+#loading{height:100%;display:grid;place-items:center;padding:24px;text-align:center}
+#loading strong{display:block;font-size:17px;margin-bottom:8px}#loading span{font-size:13px;color:#7d7668}
+</style>
+</head>
+<body>
+<div id="loading"><div><strong>Loading Gouache Sketchbook…</strong><span>Fast start: brush first, recording hands load afterward.</span></div></div>
+<script>
+(async()=>{'use strict';
+const V1='https://raw.githubusercontent.com/VanyaVasileva/coloring-book/main/gouache-sketchbook-test-v1.html';
+try{
+  const r=await fetch(V1,{cache:'no-store'});
+  if(!r.ok)throw new Error('Could not load Gouache Sketchbook v1');
+  let src=await r.text();
+
+  // v1 waited for the large human-hand file plus two hand/paw images before
+  // showing the actual sketchbook. For v3 only the Ink base + v27 brush are
+  // startup-critical. Recording overlays are loaded after the UI is usable.
+  const slowFetch=" const [br,hr,vr,skel,cat]=await Promise.all([fetch(BASE,{cache:'no-store'}),fetch(HUMAN,{cache:'no-store'}).catch(()=>null),fetch(V27,{cache:'no-store'}),img(SKELETON),img(CAT)]);";
+  const fastFetch=" const [br,vr]=await Promise.all([fetch(BASE,{cache:'no-store'}),fetch(V27,{cache:'no-store'})]); const hr=null,skel=null,cat=null;";
+  if(!src.includes(slowFetch))throw new Error('Could not apply fast-start patch');
+  src=src.replace(slowFetch,fastFetch);
+
+  const marker='document.open();document.write(html);document.close();';
+  if(!src.includes(marker))throw new Error('Could not find Gouache Sketchbook startup marker');
+
+  const runtime=String.raw`
+// --- Gouache-only Procreate-style brush cursor + lazy recording assets ---
+const brushCursorBtn=document.getElementById('brushCursorBtn');
+const brushCursorCanvas=document.createElement('canvas');
+brushCursorCanvas.id='brushCursorCanvas';
+Object.assign(brushCursorCanvas.style,{position:'absolute',pointerEvents:'none',zIndex:'30',display:'none',background:'transparent',boxShadow:'none',transformOrigin:'50% 50%'});
+wrap.appendChild(brushCursorCanvas);
+let brushCursorEnabled=true,brushCursorInside=false,brushCursorX=0,brushCursorY=0,brushCursorAngle=0,brushCursorHasAngle=false,brushCursorLastX=null,brushCursorLastY=null;
+const BC_L=[.008,.120,.224,.496,.600,.712,.816,.856,.824,.848,.880,.880,.920,.968,.992,1.000,1.000,.976,.968,.960,.936,.872,.904,.872,.784];
+const BC_R=[.477,.742,.836,.914,.938,.977,.992,1.000,1.000,1.000,.883,.875,.875,.898,.930,.875,.852,.852,.820,.797,.719,.695,.695,.633,.641];
+function bcAngleDiff(a,b){let d=b-a;while(d>Math.PI)d-=Math.PI*2;while(d< -Math.PI)d+=Math.PI*2;return d}
+function bcRecording(){return !!(recordBtn&&recordBtn.classList.contains('recording'))}
+function bcHide(){brushCursorCanvas.style.display='none'}
+function bcDraw(){
+  if(!brushCursorEnabled||!brushCursorInside||mode!=='draw'||bcRecording()){bcHide();return}
+  const zoom=Math.max(.15,(view&&view.scale)||1),brush=+gouacheSizeSlider.value;
+  const W=brush*1.08*zoom,H=brush*.90*zoom,pad=Math.max(5,brush*.13*zoom),cssW=Math.ceil(W+pad*2),cssH=Math.ceil(H+pad*2),d=Math.max(1,Math.min(2,window.devicePixelRatio||1));
+  brushCursorCanvas.width=Math.max(1,Math.round(cssW*d));brushCursorCanvas.height=Math.max(1,Math.round(cssH*d));brushCursorCanvas.style.width=cssW+'px';brushCursorCanvas.style.height=cssH+'px';
+  const c=brushCursorCanvas.getContext('2d');c.setTransform(d,0,0,d,0,0);c.clearRect(0,0,cssW,cssH);
+  const cap=brush*.22*zoom,x0=pad+brush*.020*zoom,x1=pad+W-brush*.020*zoom,y0=pad+H*.035,y1=pad+H*.965,N=BC_L.length;
+  c.beginPath();
+  for(let i=0;i<N;i++){const u=i/(N-1),y=y0+(y1-y0)*u,x=x0+cap*(1-BC_L[i]);if(i===0)c.moveTo(x,y);else c.lineTo(x,y)}
+  for(let i=N-1;i>=0;i--){const u=i/(N-1),y=y0+(y1-y0)*u,x=x1-cap*(1-BC_R[i]);c.lineTo(x,y)}
+  c.closePath();c.lineJoin='round';c.lineCap='round';
+  c.strokeStyle='rgba(255,255,255,.96)';c.lineWidth=3;c.stroke();
+  c.strokeStyle='rgba(38,35,31,.88)';c.lineWidth=1.15;c.stroke();
+  brushCursorCanvas.style.left=(brushCursorX-cssW/2)+'px';brushCursorCanvas.style.top=(brushCursorY-cssH/2)+'px';brushCursorCanvas.style.transform='rotate('+brushCursorAngle+'rad)';brushCursorCanvas.style.display='block';
+}
+function bcMove(e){
+  if(e.pointerType==='touch'){brushCursorInside=false;bcHide();return}
+  const rr=wrap.getBoundingClientRect();brushCursorX=e.clientX-rr.left;brushCursorY=e.clientY-rr.top;brushCursorInside=true;
+  if(drawing&&mode==='draw'&&stroke&&stroke.angle!==null){brushCursorAngle=stroke.angle+(((view&&view.rotation)||0)*Math.PI/180);brushCursorHasAngle=true}
+  else if(brushCursorLastX!==null){const dx=e.clientX-brushCursorLastX,dy=e.clientY-brushCursorLastY;if(Math.hypot(dx,dy)>.35){const target=Math.atan2(dy,dx);if(!brushCursorHasAngle){brushCursorAngle=target;brushCursorHasAngle=true}else brushCursorAngle+=Math.max(-.035,Math.min(.035,bcAngleDiff(brushCursorAngle,target)))*.38}}
+  brushCursorLastX=e.clientX;brushCursorLastY=e.clientY;bcDraw();
+}
+function bcLeave(){brushCursorInside=false;brushCursorLastX=null;brushCursorLastY=null;bcHide()}
+brushCursorBtn.onclick=()=>{brushCursorEnabled=!brushCursorEnabled;brushCursorBtn.classList.toggle('active',brushCursorEnabled);brushCursorBtn.textContent=brushCursorEnabled?'◎ Cursor':'○ Cursor';bcDraw()};
+brushCursorBtn.title='Toggle the v27 brush-shape cursor';
+drawCanvas.addEventListener('pointerenter',bcMove,{passive:true});drawCanvas.addEventListener('pointermove',bcMove,{passive:true});drawCanvas.addEventListener('pointerdown',bcMove,{passive:true});drawCanvas.addEventListener('pointerup',bcMove,{passive:true});drawCanvas.addEventListener('pointerleave',bcLeave,{passive:true});
+gouacheSizeSlider.addEventListener('input',bcDraw);drawModeBtn.addEventListener('click',()=>requestAnimationFrame(bcDraw));eraseModeBtn.addEventListener('click',()=>requestAnimationFrame(bcDraw));
+function bcRecordingState(){const rec=bcRecording();brushCursorBtn.disabled=rec;brushCursorBtn.title=rec?'Brush cursor is hidden while recording':'Toggle the v27 brush-shape cursor';if(rec)bcHide();else bcDraw()}
+new MutationObserver(bcRecordingState).observe(recordBtn,{attributes:true,attributeFilter:['class']});bcRecordingState();
+
+// Heavy recording overlays no longer block the first usable screen.
+let lazyHandsPromise=null;
+function lazyBlobData(blob){return new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>ok(fr.result);fr.onerror=no;fr.readAsDataURL(blob)})}
+async function lazyLoadRecordingHands(){
+  if(lazyHandsPromise)return lazyHandsPromise;
+  lazyHandsPromise=(async()=>{
+    try{
+      const humanReq=fetch('https://raw.githubusercontent.com/VanyaVasileva/ink-sketchbook/feature/new-button/ink-sketchbook-with-hand.html',{cache:'force-cache'}).then(r=>r.ok?r.text():null).catch(()=>null);
+      const skeletonReq=fetch('https://raw.githubusercontent.com/VanyaVasileva/ink-sketchbook/feature/new-button/Skeleton-hand.png',{cache:'force-cache'}).then(r=>r.ok?r.blob():null).catch(()=>null);
+      const catReq=fetch('https://raw.githubusercontent.com/VanyaVasileva/ink-sketchbook/feature/new-button/Fluffy-paw.png',{cache:'force-cache'}).then(r=>r.ok?r.blob():null).catch(()=>null);
+      const [humanText,skeletonBlob,catBlob]=await Promise.all([humanReq,skeletonReq,catReq]);
+      if(humanText&&!humanHandReady){const m=humanText.match(/const HAND_ICON_SRC = ("data:image\/png;base64,[^"]+");/);if(m){try{humanHandIcon.src=JSON.parse(m[1])}catch(_){}}}
+      if(skeletonBlob&&!skeletonHandReady)skeletonHandIcon.src=await lazyBlobData(skeletonBlob);
+      if(catBlob&&!catPawReady)catPawIcon.src=await lazyBlobData(catBlob);
+    }catch(e){console.warn('Recording hand assets could not preload',e)}
+  })();
+  return lazyHandsPromise;
+}
+setTimeout(lazyLoadRecordingHands,350);
+recordBtn.addEventListener('click',lazyLoadRecordingHands,{capture:true});
+['humanHandBtn','skeletonHandBtn','catPawBtn'].forEach(id=>{const b=document.getElementById(id);if(b)b.addEventListener('click',lazyLoadRecordingHands,{capture:true})});
+`;
+
+  const patch=`
+  // v3: add cursor without delaying startup for recording-hand assets.
+  const cursorButton='<button id="brushCursorBtn" type="button" class="active" title="Toggle brush cursor">◎ Cursor</button>';
+  html=html.replace('<button id="recordBtn">',cursorButton+'<button id="recordBtn">');
+  const cursorRuntime=${JSON.stringify(runtime)};
+  const closingScript='<\/script>';
+  html=html.replace(closingScript,cursorRuntime+closingScript);
+`;
+  src=src.replace(marker,patch+'\n  '+marker);
+  document.open();document.write(src);document.close();
+}catch(err){
+  console.error(err);document.body.innerHTML='<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;padding:26px"><h2>Could not load fast Gouache Sketchbook test</h2><p>'+String(err.message||err)+'</p><p>Refresh once. If it repeats, send me this message.</p></div>';
+}
+})();
+</script>
+</body>
+</html>
