@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Gouache Brush v6</title>
+<style>
+:root{--bg:#f5f2eb;--ink:#292721;--line:#d4cdc1}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overscroll-behavior:none}body{display:grid;grid-template-rows:auto 1fr}header{background:#fff;border-bottom:1px solid var(--line);padding:9px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}h1{font:500 17px Georgia,serif;margin:0 8px 0 0}.ctrl{display:flex;align-items:center;gap:6px;font-size:12px}.ctrl input[type=range]{width:108px}input[type=color]{width:40px;height:34px;padding:2px;border:1px solid var(--line);border-radius:8px;background:#fff}button{border:1px solid #cfc7bb;background:#fff;border-radius:9px;padding:9px 10px;color:var(--ink);font-size:12px;font-weight:700}.stage{min-height:0;padding:8px}.canvas-wrap{height:100%;background:#fff;box-shadow:0 4px 20px #0001;overflow:hidden;touch-action:none;position:relative}.layer{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}.paint{z-index:1;background:#fff}.live{z-index:2;background:transparent;cursor:crosshair}@media(max-width:760px){header{gap:7px}.ctrl input[type=range]{width:82px}.stage{padding:6px}}
+</style>
+</head>
+<body>
+<header>
+<h1>Gouache Brush v6</h1>
+<div class="ctrl"><span>Color</span><input id="color" type="color" value="#987459"></div>
+<div class="ctrl"><span>Size</span><input id="size" type="range" min="7" max="150" value="60"><strong id="sizeVal">60</strong></div>
+<div class="ctrl"><span>Paint</span><input id="opacity" type="range" min="45" max="100" value="100"><strong id="opacityVal">100%</strong></div>
+<div class="ctrl"><span>Texture</span><input id="texture" type="range" min="0" max="100" value="72"><strong id="textureVal">72%</strong></div>
+<button id="undo">Undo</button><button id="clear">Clear</button>
+</header>
+<div class="stage"><div class="canvas-wrap" id="wrap"><canvas id="paint" class="layer paint"></canvas><canvas id="live" class="layer live"></canvas></div></div>
+<script>(()=>{'use strict';
+const $=id=>document.getElementById(id),paint=$('paint'),live=$('live'),wrap=$('wrap');
+const ctx=paint.getContext('2d',{alpha:false,desynchronized:true}),lctx=live.getContext('2d',{alpha:true,desynchronized:true});
+const size=$('size'),opacity=$('opacity'),texture=$('texture'),color=$('color');
+const mask=document.createElement('canvas');let mctx=mask.getContext('2d',{alpha:true});
+let dpr=1,drawing=false,stroke=null,history=[];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function clearCtx(x,c){x.save();x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,c.width,c.height);x.restore()}
+function setup(c,transparent=true){const r=wrap.getBoundingClientRect();c.width=Math.max(1,Math.floor(r.width*dpr));c.height=Math.max(1,Math.floor(r.height*dpr));const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);if(!transparent){x.fillStyle='#fff';x.fillRect(0,0,r.width,r.height)}}
+function resize(){const old=document.createElement('canvas');old.width=paint.width;old.height=paint.height;if(old.width&&old.height)old.getContext('2d').drawImage(paint,0,0);dpr=Math.max(1,Math.min(2,devicePixelRatio||1));setup(paint,false);setup(live,true);setup(mask,true);mctx=mask.getContext('2d');mctx.setTransform(dpr,0,0,dpr,0,0);if(old.width&&old.height){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(old,0,0,old.width,old.height,0,0,paint.width,paint.height);ctx.restore()}}
+function pos(e){const r=live.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top,pressure:e.pressure>0?e.pressure:.5,time:e.timeStamp||performance.now()}}
+function snapshot(){const c=document.createElement('canvas');c.width=paint.width;c.height=paint.height;c.getContext('2d').drawImage(paint,0,0);return c}function save(){history.push(snapshot());if(history.length>10)history.shift()}
+function rgb(hex){return[parseInt(hex.slice(1,3),16),parseInt(hex.slice(3,5),16),parseInt(hex.slice(5,7),16)]}
+function shade(hex,p){const [r,g,b]=rgb(hex),f=p<0?1+p:1-p;return p<0?`rgb(${Math.round(r*f)},${Math.round(g*f)},${Math.round(b*f)})`:`rgb(${Math.round(r+(255-r)*p)},${Math.round(g+(255-g)*p)},${Math.round(b+(255-b)*p)})`}
+function hash(n,seed){const x=Math.sin(n*127.1+seed*.000071)*43758.5453123;return x-Math.floor(x)}
+function smoothNoise(x,seed){const i=Math.floor(x),f=x-i,u=f*f*(3-2*f);return hash(i,seed)*(1-u)+hash(i+1,seed)*u}
+function smoothPoint(raw){if(!stroke.filtered){stroke.filtered={...raw};return{...raw}}const dx=raw.x-stroke.filtered.x,dy=raw.y-stroke.filtered.y,speed=Math.hypot(dx,dy),follow=clamp(.70+speed/250,.70,.90);stroke.filtered.x+=dx*follow;stroke.filtered.y+=dy*follow;stroke.filtered.pressure=stroke.filtered.pressure*.72+raw.pressure*.28;stroke.filtered.time=raw.time;return{...stroke.filtered}}
+function addPoint(raw){const p=smoothPoint(raw);if(!stroke.points.length){stroke.points.push({...p,s:0});return}const q=stroke.points[stroke.points.length-1],d=Math.hypot(p.x-q.x,p.y-q.y);if(d<1.15)return;stroke.points.push({...p,s:q.s+d});if(stroke.points.length>1400){stroke.points=stroke.points.filter((_,i)=>i===0||i%2===0);let s=0;for(let i=1;i<stroke.points.length;i++){s+=Math.hypot(stroke.points[i].x-stroke.points[i-1].x,stroke.points[i].y-stroke.points[i-1].y);stroke.points[i].s=s}}}
+function geom(){const pts=stroke.points,base=+size.value,out=[];for(let i=0;i<pts.length;i++){const p=pts[i],a=pts[Math.max(0,i-1)],b=pts[Math.min(pts.length-1,i+1)],dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1,tx=dx/L,ty=dy/L,nx=-ty,ny=tx;const slow=(smoothNoise(p.s/(base*1.15)+3.7,stroke.seed)-.5)*base*.050;const fine=(smoothNoise(p.s/(base*.28)+11.3,stroke.seed^0x9e37)-.5)*base*.013;const pressure=.965+clamp(p.pressure,0,1)*.07;const half=base*.50*pressure+slow;const edgeL=(smoothNoise(p.s/(base*.20)+21.9,stroke.seed^0x51f2)-.5)*base*.017+fine;const edgeR=(smoothNoise(p.s/(base*.22)+39.1,stroke.seed^0xa4c1)-.5)*base*.017-fine;out.push({...p,tx,ty,nx,ny,half,left:{x:p.x+nx*(half+edgeL),y:p.y+ny*(half+edgeL)},right:{x:p.x-nx*(half+edgeR),y:p.y-ny*(half+edgeR)}})}return out}
+function moveSmoothPath(c,pts){if(!pts.length)return;c.moveTo(pts[0].x,pts[0].y);if(pts.length===1)return;for(let i=1;i<pts.length-1;i++){const m={x:(pts[i].x+pts[i+1].x)/2,y:(pts[i].y+pts[i+1].y)/2};c.quadraticCurveTo(pts[i].x,pts[i].y,m.x,m.y)}c.lineTo(pts[pts.length-1].x,pts[pts.length-1].y)}
+function capPoints(g,end=true){const p=end?g[g.length-1]:g[0],dir=end?1:-1,count=11,arr=[];for(let i=0;i<count;i++){const u=1-2*i/(count-1),edge=Math.abs(u),r=(hash(i+(end?31:73),stroke.seed)-.5),r2=(hash(i+(end?131:173),stroke.seed)-.5);const along=dir*(+size.value)*(.012+r*.060*(.45+.55*edge));const cross=u*p.half+r2*(+size.value)*.008;arr.push({x:p.x+p.tx*along+p.nx*cross,y:p.y+p.ty*along+p.ny*cross})}return arr}
+function buildMask(g){clearCtx(mctx,mask);if(g.length<2)return;mctx.save();mctx.fillStyle='#fff';mctx.beginPath();const left=g.map(p=>p.left),right=g.map(p=>p.right).reverse();moveSmoothPath(mctx,left);const endCap=capPoints(g,true);for(let i=1;i<endCap.length;i++)mctx.lineTo(endCap[i].x,endCap[i].y);moveSmoothPath(mctx,right);const startCap=capPoints(g,false);for(let i=1;i<startCap.length;i++)mctx.lineTo(startCap[i].x,startCap[i].y);mctx.closePath();mctx.fill();
+ // Very small edge wear only: no fuzzy halo.
+ mctx.globalCompositeOperation='destination-out';mctx.globalAlpha=.17;const edgeDash=Math.max(1,+size.value*.10);mctx.setLineDash([edgeDash*.55,edgeDash*.85]);mctx.lineWidth=Math.max(.6,+size.value*.010);mctx.lineCap='round';mctx.beginPath();moveSmoothPath(mctx,left);mctx.stroke();mctx.beginPath();moveSmoothPath(mctx,right.slice().reverse());mctx.stroke();mctx.restore()}
+function lanePoints(g,lane,wobble=0){return g.map((p,i)=>{const w=(smoothNoise(p.s/(+size.value*.55)+lane*9.1,stroke.seed^0x7d93)-.5)*(+size.value)*wobble;const off=p.half*lane+w;return{x:p.x+p.nx*off,y:p.y+p.ny*off}})}
+function strokePath(c,pts){if(pts.length<2)return;c.beginPath();moveSmoothPath(c,pts);c.stroke()}
+function drawTexture(g){const strength=+texture.value/100,brush=+size.value,base=color.value;if(strength<=.001)return;
+ // Soft paint-body variation: broad, low-contrast bristle bands.
+ const broad=[[-.30,-.045,.035],[-.10,.050,.030],[.13,-.040,.028],[.31,.055,.032]];
+ lctx.save();lctx.globalCompositeOperation='source-atop';for(let i=0;i<broad.length;i++){const [lane,tone,a]=broad[i];lctx.strokeStyle=shade(base,tone);lctx.globalAlpha=a*strength;lctx.lineWidth=Math.max(2,brush*.16);lctx.lineCap='round';lctx.lineJoin='round';strokePath(lctx,lanePoints(g,lane,.010))}
+ // Fine lengthwise bristles.
+ const lanes=[-.42,-.35,-.27,-.19,-.11,-.03,.06,.14,.22,.30,.38,.44];for(let i=0;i<lanes.length;i++){const tone=i%4===0?.10:i%4===1?-.085:i%4===2?.055:-.045;lctx.strokeStyle=shade(base,tone);lctx.globalAlpha=(.035+(i%3)*.011)*strength;lctx.lineWidth=Math.max(.55,brush*(.007+(i%2)*.004));lctx.lineCap='round';lctx.setLineDash(i%3===0?[brush*.75,brush*.38]:i%3===1?[brush*1.35,brush*.55]:[]);lctx.lineDashOffset=-(hash(i+91,stroke.seed)*brush*1.5);strokePath(lctx,lanePoints(g,lanes[i],.014))}
+ lctx.setLineDash([]);lctx.restore();
+ // Dry channels: thin broken gaps running with the brush, concentrated near edges plus a few center channels.
+ lctx.save();lctx.globalCompositeOperation='destination-out';const dryLanes=[-.43,-.34,-.23,-.08,.10,.25,.36,.44];for(let i=0;i<dryLanes.length;i++){lctx.globalAlpha=(.055+(i%3)*.020)*strength;lctx.lineWidth=Math.max(.5,brush*(.0055+(i%2)*.0035));lctx.lineCap='round';lctx.setLineDash([brush*(.65+hash(i+12,stroke.seed)*.75),brush*(.38+hash(i+42,stroke.seed)*.55)]);lctx.lineDashOffset=-hash(i+72,stroke.seed)*brush*1.8;strokePath(lctx,lanePoints(g,dryLanes[i],.012))}
+ // A handful of stronger dry bristles close to the ending, like a brush lifting from paper.
+ const total=g[g.length-1].s||1,startS=total-brush*1.45;if(total>brush*.7){for(let i=0;i<6;i++){const lane=-.40+i*.16,arr=g.filter(p=>p.s>=startS).map(p=>{const t=clamp((p.s-startS)/(brush*1.45),0,1),off=p.half*lane;return{x:p.x+p.nx*off+p.tx*(t*brush*.035*(i%2?1:-1)),y:p.y+p.ny*off+p.ty*(t*brush*.035*(i%2?1:-1))}});lctx.globalAlpha=(.07+(i%2)*.035)*strength;lctx.lineWidth=Math.max(.55,brush*.007);lctx.setLineDash([brush*.32,brush*.22]);lctx.lineDashOffset=-i*brush*.11;strokePath(lctx,arr)}}lctx.setLineDash([]);lctx.restore()}
+function roughCaps(g){const strength=+texture.value/100,brush=+size.value;if(g.length<2||strength<=.001)return;const ends=[{p:g[0],dir:-1,seed:217},{p:g[g.length-1],dir:1,seed:419}];lctx.save();lctx.globalCompositeOperation='destination-out';for(const e of ends){for(let i=0;i<13;i++){const u=-.46+i*(.92/12),off=e.p.half*u,j=(hash(i+e.seed,stroke.seed)-.5),len=brush*(.035+hash(i+e.seed+33,stroke.seed)*.10),sx=e.p.x+e.p.nx*off,sy=e.p.y+e.p.ny*off,ex=sx-e.p.tx*e.dir*len,ey=sy-e.p.ty*e.dir*len;lctx.globalAlpha=(.035+Math.abs(j)*.15)*strength;lctx.lineWidth=Math.max(.45,brush*(.0045+hash(i+e.seed+66,stroke.seed)*.006));lctx.lineCap='round';lctx.beginPath();lctx.moveTo(sx,sy);lctx.lineTo(ex,ey);lctx.stroke()}}lctx.restore()}
+function render(){clearCtx(lctx,live);if(!stroke||stroke.points.length<2)return;const g=geom();buildMask(g);lctx.save();lctx.setTransform(1,0,0,1,0,0);lctx.drawImage(mask,0,0);lctx.globalCompositeOperation='source-in';lctx.fillStyle=color.value;lctx.fillRect(0,0,live.width,live.height);lctx.restore();drawTexture(g);roughCaps(g);live.style.opacity=opacity.value/100}
+function begin(p){save();stroke={points:[],filtered:null,seed:((performance.now()*1000)|0)^(Math.random()*0xffffffff)};addPoint(p);clearCtx(lctx,live)}
+function commit(){if(!stroke||stroke.points.length<2){clearCtx(lctx,live);return}render();ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=+opacity.value/100;ctx.drawImage(live,0,0);ctx.restore();clearCtx(lctx,live)}
+live.addEventListener('pointerdown',e=>{e.preventDefault();try{live.setPointerCapture(e.pointerId)}catch(_){}drawing=true;begin(pos(e))});
+live.addEventListener('pointermove',e=>{if(!drawing)return;e.preventDefault();const ce=typeof e.getCoalescedEvents==='function'?e.getCoalescedEvents():null,arr=ce&&ce.length?ce:[e];for(const ev of arr)addPoint(pos(ev));render()});
+function end(e){if(!drawing)return;drawing=false;addPoint(pos(e));commit();stroke=null;try{live.releasePointerCapture(e.pointerId)}catch(_){}}live.addEventListener('pointerup',end);live.addEventListener('pointercancel',end);live.addEventListener('contextmenu',e=>e.preventDefault());
+$('undo').onclick=()=>{clearCtx(lctx,live);if(!history.length)return;const s=history.pop();ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.fillStyle='#fff';ctx.fillRect(0,0,paint.width,paint.height);ctx.drawImage(s,0,0);ctx.restore()};$('clear').onclick=()=>{save();clearCtx(lctx,live);ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.fillStyle='#fff';ctx.fillRect(0,0,paint.width,paint.height);ctx.restore()};
+size.oninput=()=>{$('sizeVal').textContent=size.value;if(drawing)render()};opacity.oninput=()=>{$('opacityVal').textContent=opacity.value+'%';live.style.opacity=opacity.value/100};texture.oninput=()=>{$('textureVal').textContent=texture.value+'%';if(drawing)render()};addEventListener('resize',resize);resize();
+})();</script>
+</body>
+</html>
